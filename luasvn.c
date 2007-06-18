@@ -9,6 +9,12 @@
 
 #define BUFFER_SIZE 1000
 
+#define IF_ERROR_RETURN(err, pool, L) do { \
+	if (err) { \
+		svn_pool_destroy (pool); \
+		return send_error (L, err); \
+	} \
+} while (0)
 
 
 static int
@@ -121,22 +127,13 @@ l_create_dir (lua_State *L) {
 
 
 	err = init_fs_root_youngest (repos_path, &repos, &fs, &youngest_rev, &txn, &txn_root, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
  
 	err = svn_fs_make_dir(txn_root, new_directory, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	err = svn_repos_fs_commit_txn(&conflict_str, repos, &youngest_rev, txn, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
   
 	lua_pushboolean (L, 1);
 	lua_pushstring (L, lua_pushfstring (L,
@@ -170,22 +167,13 @@ l_create_file (lua_State *L) {
 
 
 	err = init_fs_root_youngest (repos_path, &repos, &fs, &youngest_rev, &txn, &txn_root, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
   
 	err = svn_fs_make_file(txn_root, new_file, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	err = svn_repos_fs_commit_txn(&conflict_str, repos, &youngest_rev, txn, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushboolean (L, 1);
 	lua_pushstring (L, lua_pushfstring (L,
@@ -222,40 +210,25 @@ l_change_file (lua_State *L) {
 
 
 	err = init_fs_root_youngest (repos_path, &repos, &fs, &youngest_rev, &txn, &txn_root, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	stream = svn_stream_empty (pool);
 	
 	err = svn_fs_apply_text (&stream, txn_root, file, NULL, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 
 	err = svn_stream_printf (stream, pool, "%s", new_text);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 	
 	svn_stream_close (stream);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 	
 	err = svn_repos_fs_commit_txn(&conflict_str, repos, 
 			&youngest_rev, txn, pool);
 
 	
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushboolean (L, 1);
 	lua_pushstring (L, lua_pushfstring (L,
@@ -298,16 +271,10 @@ l_get_file_content (lua_State *L) {
 		err = init_fs_root_youngest (repos_path, &repos, &fs, &youngest_rev, &txn, &txn_root, pool);
 	}
 
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
   
 	err = svn_fs_file_contents (&stream, txn_root, file, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	char *buffer = malloc (BUFFER_SIZE);
 	int currentSize;
@@ -315,20 +282,14 @@ l_get_file_content (lua_State *L) {
 	apr_size_t len = BUFFER_SIZE;
 	
 	err = svn_stream_read (stream, buffer, &len);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	currentSize = len;
 
 	while (len == BUFFER_SIZE) {
 		
 		err = svn_stream_read (stream, tmp, &len);
-		if (err) {
-			svn_pool_destroy (pool);
-			return send_error (L, err);
-		}
+		IF_ERROR_RETURN (err, pool, L);
 
 		if (len == BUFFER_SIZE) {
 			buffer = realloc (buffer, currentSize + len);
@@ -341,11 +302,8 @@ l_get_file_content (lua_State *L) {
 		}
 	}
 
-	svn_stream_close (stream);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	err = svn_stream_close (stream);
+	IF_ERROR_RETURN (err, pool, L);
 
 	buffer [currentSize] = '\0';
 	currentSize++;
@@ -381,18 +339,12 @@ l_get_files (lua_State *L) {
 
 
 	err = init_fs_root_youngest (repos_path, &repos, &fs, &youngest_rev, &txn, &txn_root, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
   
 	apr_hash_t *entries;
 
 	err = svn_fs_dir_entries (&entries, txn_root, dir, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushboolean (L, 1);
 	lua_newtable (L);
@@ -415,10 +367,7 @@ l_get_files (lua_State *L) {
 		strcat (tmp, dirent->name);
 
 		err = svn_fs_node_created_rev (&revision, txn_root, tmp, pool);
-		if (err) {
-			svn_pool_destroy (pool);
-			return send_error (L, err);
-		}
+		IF_ERROR_RETURN (err, pool, L);
 
 		lua_pushnumber (L, j++);
 		
@@ -466,28 +415,19 @@ l_get_file_history (lua_State *L) {
 	 * node is initialized and what we really want it is a revision node
 	 */
 	err = init_fs_root_youngest (repos_path, &repos, &fs, &youngest_rev, &txn, &txn_root, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
   
 	svn_fs_root_t *rev_root;
  
 	/* Creates a revision node using the variables that have already been initialized by init_fs_root_youngest	
 	 */
 	err = svn_fs_revision_root (&rev_root, fs, youngest_rev, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	svn_fs_history_t *history;
 
 	err = svn_fs_node_history (&history, rev_root, file, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	const char *tmp;
 	svn_revnum_t rev;
@@ -496,17 +436,11 @@ l_get_file_history (lua_State *L) {
 	int j = 1;
 
 	err = svn_fs_history_prev (&history, history, FALSE, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 	
 	while (history != NULL) {
 		err = svn_fs_history_location (&tmp, &rev, history, pool);
-		if (err) {
-			svn_pool_destroy (pool);
-			return send_error (L, err);
-		}
+		IF_ERROR_RETURN (err, pool, L);
 
 		lua_pushnumber (L, j++);
 		
@@ -521,10 +455,7 @@ l_get_file_history (lua_State *L) {
 		lua_settable (L, -3);
 		
 		err = svn_fs_history_prev (&history, history, FALSE, pool);
-		if (err) {
-			svn_pool_destroy (pool);
-			return send_error (L, err);
-		}
+		IF_ERROR_RETURN (err, pool, L);
 	}
 
 	svn_pool_destroy (pool);
@@ -559,10 +490,7 @@ l_get_rev_proplist (lua_State *L) {
 	svn_fs_root_t *txn_root;
 
 	err = init_fs_root_youngest (repos_path, &repos, &fs, &youngest_rev, &txn, &txn_root, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
   
 	apr_hash_t *entries;
 	apr_hash_index_t *hi;
@@ -570,10 +498,7 @@ l_get_rev_proplist (lua_State *L) {
 	const void *key;
 
 	err = svn_fs_revision_proplist (&entries, fs, revision, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushboolean (L, 1);
 	lua_newtable (L);
@@ -633,17 +558,11 @@ l_change_rev_prop (lua_State *L) {
 	} else {
 		err = init_fs_root_rev (repos_path, &repos, &fs, revision, &txn, &txn_root, pool);
 	}
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
   
 	const svn_string_t sstring = {value, strlen (value) + 1};
 	err = svn_fs_change_rev_prop (fs, revision, prop, &sstring, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushboolean (L, 1);
 	lua_pushstring (L, lua_pushfstring (L, "Property successfully changed\n"));
@@ -677,18 +596,12 @@ l_file_exists (lua_State *L) {
 	svn_fs_root_t *txn_root;
 
 	err = init_fs_root_youngest (repos_path, &repos, &fs, &youngest_rev, &txn, &txn_root, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
   
 	svn_boolean_t res;
 
 	err = svn_fs_is_file (&res, txn_root, file, pool);
-	if (err) {
-		svn_pool_destroy (pool);
-		return send_error (L, err);
-	}
+	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushboolean (L, 1);
 	lua_pushboolean (L, res);
@@ -719,3 +632,4 @@ luaopen_luasvn (lua_State *L) {
 	luaL_register (L, "luasvn", luasvn);
 	return 1;
 }
+
