@@ -65,7 +65,7 @@ init_fs_root (const char *repos_path, svn_repos_t **repos, svn_fs_t **fs, svn_re
 
 	*fs = svn_repos_fs (*repos);
 
-	if (!rev) { /* Should get the youngest revision */
+	if (*rev == 0) { /* Should get the youngest revision */
 		err = svn_fs_youngest_rev(rev, *fs, pool);
 		if (err)
 			return err;
