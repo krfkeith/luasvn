@@ -19,7 +19,7 @@
 
 static int
 send_error (lua_State *L, svn_error_t *err) {
-	lua_pushboolean (L, 0);
+	lua_pushnil (L);
 	
 	lua_pushstring (L, err->message);
 
@@ -111,14 +111,11 @@ l_create_dir (lua_State *L) {
 	err = svn_repos_fs_commit_txn(&conflict_str, repos, &revision, txn, pool);
 	IF_ERROR_RETURN (err, pool, L);
   
-	lua_pushboolean (L, 1);
-	lua_pushstring (L, lua_pushfstring (L,
-				"Directory '%s' was successfully added as new revision '%d'.",
-				new_directory, revision));
+	lua_pushinteger (L, revision);
 
 	svn_pool_destroy (pool);
 
-	return 2;
+	return 1;
 }
 
 static int
@@ -152,15 +149,11 @@ l_create_file (lua_State *L) {
 	err = svn_repos_fs_commit_txn(&conflict_str, repos, &revision, txn, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushboolean (L, 1);
-	lua_pushstring (L, lua_pushfstring (L,
-				"File '%s' was successfully added as new revision '%d'.",
-				new_file, revision));
-
+	lua_pushinteger (L, revision);
 
 	svn_pool_destroy (pool);
 	
-	return 2;
+	return 1;
 }
 
 
@@ -208,15 +201,11 @@ l_change_file (lua_State *L) {
 	
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushboolean (L, 1);
-	lua_pushstring (L, lua_pushfstring (L,
-				"File '%s' was successfully changed as new revision '%d'.",
-				file, revision));
-
+	lua_pushinteger (L, revision);
 
 	svn_pool_destroy (pool);
 
-	return 2;
+	return 1;
 }
 
 static int
@@ -280,12 +269,11 @@ l_get_file_content (lua_State *L) {
 	buffer [currentSize] = '\0';
 	currentSize++;
 
-	lua_pushboolean (L, 1);
 	lua_pushstring (L, buffer);
 
 	svn_pool_destroy (pool);
 
-	return 2;
+	return 1;
 }
 
 
@@ -318,7 +306,6 @@ l_get_files (lua_State *L) {
 	err = svn_fs_dir_entries (&entries, txn_root, dir, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushboolean (L, 1);
 	lua_newtable (L);
 
 	apr_hash_index_t *hi;
@@ -340,24 +327,13 @@ l_get_files (lua_State *L) {
 		err = svn_fs_node_created_rev (&revision, txn_root, tmp, pool);
 		IF_ERROR_RETURN (err, pool, L);
 
-		lua_pushnumber (L, j++);
-		
-		lua_newtable (L);
-		
-		lua_pushstring (L, dirent->name);
-		lua_setfield (L, -2, "name");
-
 		lua_pushnumber (L, revision);
-		lua_setfield (L, -2, "revision");
-		
-		lua_settable (L, -3);
-
+		lua_setfield (L, -2, dirent->name);
 	}
-
 
 	svn_pool_destroy (pool);
 
-	return 2;
+	return 1;
 }
 
 
@@ -404,7 +380,6 @@ l_get_file_history (lua_State *L) {
 
 	const char *tmp;
 	svn_revnum_t rev;
-	lua_pushboolean (L, 1);
 	lua_newtable (L);
 	int j = 1;
 
@@ -415,15 +390,9 @@ l_get_file_history (lua_State *L) {
 		err = svn_fs_history_location (&tmp, &rev, history, pool);
 		IF_ERROR_RETURN (err, pool, L);
 
-		lua_pushnumber (L, j++);
-		
-		lua_newtable (L);
+		lua_pushnumber (L, rev);
 		
 		lua_pushstring (L, tmp);
-		lua_setfield (L, -2, "name");
-
-		lua_pushnumber (L, rev);
-		lua_setfield (L, -2, "revision");
 
 		lua_settable (L, -3);
 		
@@ -433,7 +402,7 @@ l_get_file_history (lua_State *L) {
 
 	svn_pool_destroy (pool);
 
-	return 2;
+	return 1;
 
 }
 
@@ -469,7 +438,6 @@ l_get_rev_proplist (lua_State *L) {
 	err = svn_fs_revision_proplist (&entries, fs, revision, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushboolean (L, 1);
 	lua_newtable (L);
 	int j = 1;
 
@@ -478,23 +446,13 @@ l_get_rev_proplist (lua_State *L) {
 		
 		svn_string_t *s = (svn_string_t *) val;
 
-		lua_pushnumber (L, j++);
-		
-		lua_newtable (L);
-	
-		lua_pushstring (L, (char *) key);
-		lua_setfield (L, -2, "prop");
-
 		lua_pushstring (L, s->data);
-		lua_setfield (L, -2, "value");
-	
-		lua_settable (L, -3);
-
+		lua_setfield (L, -2, (char *) key);
 	}
 
 	svn_pool_destroy (pool);
 
-	return 2;
+	return 1;
 
 }
 
@@ -503,7 +461,7 @@ l_change_rev_prop (lua_State *L) {
 
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *prop = luaL_checkstring (L, 2);
-	const char *value = luaL_checkstring (L, 3);
+	const char *value = lua_isnil (L, 3) ? 0 : luaL_checkstring (L, 3);
 	
 	/* If can not convert to an integer, "revision" will receive zero */
 	svn_revnum_t revision = lua_tointeger (L, 4);
@@ -522,18 +480,20 @@ l_change_rev_prop (lua_State *L) {
 
 	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
 	IF_ERROR_RETURN (err, pool, L);
-  
-	const svn_string_t sstring = {value, strlen (value) + 1};
-	err = svn_fs_change_rev_prop (fs, revision, prop, &sstring, pool);
+ 
+	if (value) {
+		const svn_string_t sstring = {value, strlen (value) + 1};
+		err = svn_fs_change_rev_prop (fs, revision, prop, &sstring, pool);
+	} else {
+		err = svn_fs_change_rev_prop (fs, revision, prop, 0, pool);
+	}
 	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushboolean (L, 1);
-	lua_pushstring (L, lua_pushfstring (L, "Property successfully changed\n"));
-
 
 	svn_pool_destroy (pool);
 
-	return 2;
+	return 1;
 
 }
 
@@ -568,27 +528,26 @@ l_file_exists (lua_State *L) {
 	err = svn_fs_is_file (&res, txn_root, file, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushboolean (L, 1);
 	lua_pushboolean (L, res);
 
 	svn_pool_destroy (pool);
 
-	return 2;
+	return 1;
 
 }
 
 
 
 static const struct luaL_Reg luasvn [] = {
+	{"change_file", l_change_file},
+	{"change_rev_prop", l_change_rev_prop},
 	{"create_dir", l_create_dir},
 	{"create_file", l_create_file},
-	{"change_file", l_change_file},
-	{"get_file_content", l_get_file_content},
-	{"get_files", l_get_files},
-	{"get_file_history", l_get_file_history},
-	{"get_rev_proplist", l_get_rev_proplist},
-	{"change_rev_prop", l_change_rev_prop},
 	{"file_exists", l_file_exists},
+	{"get_file_content", l_get_file_content},
+	{"get_file_history", l_get_file_history},
+	{"get_files", l_get_files},
+	{"get_rev_proplist", l_get_rev_proplist},
 	{NULL, NULL}
 };
 
