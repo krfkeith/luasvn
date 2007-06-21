@@ -86,8 +86,7 @@ l_create_dir (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *new_directory = luaL_checkstring (L, 2);
 	
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 3);
+	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
 
 	apr_pool_t *pool;
 
@@ -123,8 +122,7 @@ l_create_file (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *new_file = luaL_checkstring (L, 2);
 
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 3);
+	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
 
 	apr_pool_t *pool;
 
@@ -163,8 +161,7 @@ l_change_file (lua_State *L) {
 	const char *file = luaL_checkstring (L, 2);
 	const char *new_text = luaL_checkstring (L, 3);
 
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 4);
+	svn_revnum_t revision =  lua_gettop (L) == 4 ? lua_tointeger (L, 4) : 0;
 
 	apr_pool_t *pool;
 
@@ -213,8 +210,7 @@ l_get_file_content (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *file = luaL_checkstring (L, 2);
 
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 3);
+	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
 
 	apr_pool_t *pool;
 
@@ -283,8 +279,7 @@ l_get_files (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *dir = luaL_checkstring (L, 2);
 	
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 3);
+	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
 	
 	apr_pool_t *pool;
 
@@ -343,8 +338,7 @@ l_get_file_history (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *file = luaL_checkstring (L, 2);
 	
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 3);
+	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
 	
 	apr_pool_t *pool;
 
@@ -411,8 +405,7 @@ l_get_rev_proplist (lua_State *L) {
 
 	const char *repos_path = luaL_checkstring (L, 1);
 	
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 2);
+	svn_revnum_t revision =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
 
 	apr_pool_t *pool;
 
@@ -463,8 +456,7 @@ l_change_rev_prop (lua_State *L) {
 	const char *prop = luaL_checkstring (L, 2);
 	const char *value = lua_isnil (L, 3) ? 0 : luaL_checkstring (L, 3);
 	
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 4);
+	svn_revnum_t revision =  lua_gettop (L) == 4 ? lua_tointeger (L, 4) : 0;
 
 	apr_pool_t *pool;
 
@@ -505,8 +497,7 @@ l_file_exists (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *file = luaL_checkstring (L, 2);
 	
-	/* If can not convert to an integer, "revision" will receive zero */
-	svn_revnum_t revision = lua_tointeger (L, 3);
+	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
 
 	apr_pool_t *pool;
 
