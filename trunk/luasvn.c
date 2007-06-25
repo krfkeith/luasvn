@@ -17,6 +17,7 @@
 } while (0)
 
 
+/* Returns nil and an error message */
 static int
 send_error (lua_State *L, svn_error_t *err) {
 	lua_pushnil (L);
@@ -28,6 +29,7 @@ send_error (lua_State *L, svn_error_t *err) {
 	return 2;
 }
 
+/* Initializes the memory pool */
 static int
 init_pool (apr_pool_t **pool) {
 	
@@ -42,6 +44,8 @@ init_pool (apr_pool_t **pool) {
 	return 0;
 }
 
+
+/* Indicates that an error occurred during the pool initialization */
 static int
 init_pool_error (lua_State *L) {
 	svn_error_t *err = malloc (sizeof (svn_error_t *));
@@ -49,6 +53,8 @@ init_pool_error (lua_State *L) {
 	return send_error (L, err);
 }
 
+
+/* This function initializes pointers to the repository file system */
 static svn_error_t *
 init_fs_root (const char *repos_path, svn_repos_t **repos, svn_fs_t **fs, svn_revnum_t *rev,
 		svn_fs_txn_t **txn, svn_fs_root_t **txn_root, apr_pool_t *pool) {
@@ -80,6 +86,8 @@ init_fs_root (const char *repos_path, svn_repos_t **repos, svn_fs_t **fs, svn_re
 }
 
 
+/* Creates a directory. 
+ * Returns the new version of the file system */
 static int
 l_create_dir (lua_State *L) {
 	
@@ -117,6 +125,8 @@ l_create_dir (lua_State *L) {
 	return 1;
 }
 
+/* Creates a file. 
+ * Returns the new version of the file system */
 static int
 l_create_file (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
@@ -155,6 +165,8 @@ l_create_file (lua_State *L) {
 }
 
 
+/* Changes the content of a file. 
+ * Returns the new version of the file system */
 static int
 l_change_file (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
@@ -205,6 +217,8 @@ l_change_file (lua_State *L) {
 	return 1;
 }
 
+/* Gets the content of a file 
+ * Returns the content of a file */
 static int
 l_get_file_content (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
@@ -274,6 +288,9 @@ l_get_file_content (lua_State *L) {
 
 
 
+/* Gets the list of files in a directory. 
+ * Returns this list indicating also in which version
+ * a file was modified by the last time */
 static int
 l_get_files (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
@@ -332,6 +349,9 @@ l_get_files (lua_State *L) {
 }
 
 
+/* Gets the history of a file 
+ * Returns a table with all revisions in which the file was modified and the
+ * name of the file in that revision */
 static int
 l_get_file_history (lua_State *L) {
 
@@ -400,6 +420,9 @@ l_get_file_history (lua_State *L) {
 
 }
 
+/* Gets the property list of a revision
+ * Returns a table with all properties of a revision and
+ * the associated values  */
 static int
 l_get_rev_proplist (lua_State *L) {
 
@@ -449,6 +472,8 @@ l_get_rev_proplist (lua_State *L) {
 
 }
 
+/* Changes the value of a property 
+ * Returns true in case of success  */
 static int
 l_change_rev_prop (lua_State *L) {
 
@@ -491,6 +516,10 @@ l_change_rev_prop (lua_State *L) {
 
 
 
+/* Tests if there is a file with the given name
+ * in the repository
+ * Returns true if the file already exists and
+ * false otherwise */
 static int
 l_file_exists (lua_State *L) {
 
