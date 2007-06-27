@@ -17,16 +17,19 @@
 } while (0)
 
 
-/* Returns nil and an error message */
+/* Returns nil and an error message (Until version 8) */
+/* Now calls lua_error */
 static int
 send_error (lua_State *L, svn_error_t *err) {
-	lua_pushnil (L);
+	/*lua_pushnil (L);*/
 	
 	lua_pushstring (L, err->message);
 
 	svn_error_clear (err);
 	
-	return 2;
+	/*return 2;*/
+
+	return lua_error (L);
 }
 
 /* Initializes the memory pool */
