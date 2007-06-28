@@ -97,7 +97,7 @@ l_create_dir (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *new_directory = luaL_checkstring (L, 2);
 	
-	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	svn_revnum_t revision = 0;
 
 	apr_pool_t *pool;
 
@@ -135,7 +135,7 @@ l_create_file (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *new_file = luaL_checkstring (L, 2);
 
-	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	svn_revnum_t revision = 0;
 
 	apr_pool_t *pool;
 
@@ -176,7 +176,7 @@ l_change_file (lua_State *L) {
 	const char *file = luaL_checkstring (L, 2);
 	const char *new_text = luaL_checkstring (L, 3);
 
-	svn_revnum_t revision =  lua_gettop (L) == 4 ? lua_tointeger (L, 4) : 0;
+	svn_revnum_t revision = 0;
 
 	apr_pool_t *pool;
 
