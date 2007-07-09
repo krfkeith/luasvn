@@ -1,11 +1,11 @@
-#include "svn_repos.h"
-#include "svn_pools.h"
-#include "svn_error.h"
-#include "svn_client.h"
+#include <svn_repos.h>
+#include <svn_pools.h>
+#include <svn_error.h>
+#include <svn_client.h>
 
-#include "lua.h"
-#include "lauxlib.h"
-#include "lualib.h"
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
 
 #define BUFFER_SIZE 1000
 
@@ -87,6 +87,48 @@ init_fs_root (const char *repos_path, svn_repos_t **repos, svn_fs_t **fs, svn_re
 	err = svn_fs_txn_root(txn_root, *txn, pool);
 	return err;
 }
+
+
+/* Creates a repository */
+static int
+l_create_repos (lua_State *L) {
+	const char *repos_path = luaL_checkstring (L, 1);
+	svn_repos_t *repos_p;
+
+	apr_pool_t *pool;
+
+	if (init_pool (&pool) != 0) {
+		return init_pool_error (L);
+	}
+
+	svn_error_t *err;
+
+	err = svn_repos_create (&repos_p, repos_path, NULL, NULL, NULL, NULL, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	return 0;
+}
+
+
+/* Deletes a repository */
+static int
+l_delete_repos (lua_State *L) {
+	const char *repos_path = luaL_checkstring (L, 1);
+
+	apr_pool_t *pool;
+
+	if (init_pool (&pool) != 0) {
+		return init_pool_error (L);
+	}
+
+	svn_error_t *err;
+
+	err = svn_repos_delete (repos_path, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	return 0;
+}
+
 
 
 /* Creates a directory. 
@@ -566,6 +608,8 @@ static const struct luaL_Reg luasvn [] = {
 	{"change_rev_prop", l_change_rev_prop},
 	{"create_dir", l_create_dir},
 	{"create_file", l_create_file},
+	{"create_repos", l_create_repos},
+	{"delete_repos", l_delete_repos},
 	{"file_exists", l_file_exists},
 	{"get_file_content", l_get_file_content},
 	{"get_file_history", l_get_file_history},
