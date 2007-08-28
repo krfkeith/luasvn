@@ -355,9 +355,25 @@ l_get_files (lua_State *L) {
 	svn_fs_txn_t *txn;
 	svn_fs_root_t *txn_root;
 
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
+	err = svn_fs_initialize (pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	svn_client_ctx_t *ctx;
+	err = snv_client_create_context (&ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
   
+	err = svn_client_list (repos_path,
+					       NULL,
+						   &revision,
+						   FALSE,
+						   SVN_DIRENT_ALL,
+						   TRUE,
+						   NULL,
+						   NULL,
+						   ctx,
+						   pool);
+
+	/*
 	apr_hash_t *entries;
 
 	err = svn_fs_dir_entries (&entries, txn_root, dir, pool);
@@ -387,6 +403,7 @@ l_get_files (lua_State *L) {
 		lua_pushnumber (L, revision);
 		lua_setfield (L, -2, dirent->name);
 	}
+	*/
 
 	svn_pool_destroy (pool);
 
