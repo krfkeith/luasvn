@@ -332,6 +332,24 @@ l_get_file_content (lua_State *L) {
 }
 
 
+static svn_error_t *
+myfunc (void *baton, 
+		const char *path,
+		const svn_dirent_t *dirent,
+	    const svn_lock_t *lock,
+	    const char *abs_path,
+	    apr_pool_t *pool)
+{
+	printf ("eu sou myfunc\n");
+	
+	printf ("path: %s\n", path);
+
+	printf ("abs_path: %s\n", abs_path);
+
+	printf ("dirent size: %d\n", dirent->size);
+	
+	printf ("dirent last: %s\n", dirent->last_author);
+}	
 
 /* Gets the list of files in a directory. 
  * Returns this list indicating also in which version
@@ -340,9 +358,19 @@ static int
 l_get_files (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *dir = luaL_checkstring (L, 2);
-	
-	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
-	
+
+	svn_opt_revision_t revision;
+	svn_opt_revision_t peg_revision;
+
+	peg_revision.kind = svn_opt_revision_head;
+
+	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	if (revision.value.number) {
+		revision.kind = svn_opt_revision_number;
+	} else {
+		revision.kind = svn_opt_revision_head;
+	}
+
 	apr_pool_t *pool;
 
 	if (init_pool (&pool) != 0) {
@@ -359,19 +387,23 @@ l_get_files (lua_State *L) {
 	IF_ERROR_RETURN (err, pool, L);
 
 	svn_client_ctx_t *ctx;
-	err = snv_client_create_context (&ctx, pool);
+	err = svn_client_create_context (&ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
-  
+ 
+    printf ("aqui\n");	
+	
 	err = svn_client_list (repos_path,
-					       NULL,
+					       &peg_revision,
 						   &revision,
-						   FALSE,
+						   TRUE,
 						   SVN_DIRENT_ALL,
 						   TRUE,
-						   NULL,
+						   myfunc,
 						   NULL,
 						   ctx,
 						   pool);
+    
+	printf ("até ali\n");	
 
 	/*
 	apr_hash_t *entries;
