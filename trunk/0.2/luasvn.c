@@ -342,13 +342,33 @@ myfunc (void *baton,
 {
 	printf ("eu sou myfunc\n");
 	
+
+	const char *entryname;
+
+	if (strcmp(path, "") == 0)
+	{   
+	   	if (dirent->kind == svn_node_file)
+		   	entryname = svn_path_basename(abs_path, pool);
+		else
+			return SVN_NO_ERROR;
+	}   
+	else
+		entryname = path;
+
 	printf ("path: %s\n", path);
 
+	/*
 	printf ("abs_path: %s\n", abs_path);
 
 	printf ("dirent size: %d\n", dirent->size);
 	
-	printf ("dirent last: %s\n", dirent->last_author);
+	printf ("dirent last: %s\n", dirent->last_author);*/
+
+	if (baton != NULL) {
+		printf ("baton nao eh null\n");
+	} else {
+		printf ("baton eh null\n");
+	}
 }	
 
 /* Gets the list of files in a directory. 
@@ -362,7 +382,7 @@ l_get_files (lua_State *L) {
 	svn_opt_revision_t revision;
 	svn_opt_revision_t peg_revision;
 
-	peg_revision.kind = svn_opt_revision_head;
+	peg_revision.kind = svn_opt_revision_unspecified;
 
 	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
 	if (revision.value.number) {
@@ -391,7 +411,9 @@ l_get_files (lua_State *L) {
 	IF_ERROR_RETURN (err, pool, L);
  
     printf ("aqui\n");	
-	
+
+	apr_hash_t *entries;
+
 	err = svn_client_list (repos_path,
 					       &peg_revision,
 						   &revision,
@@ -399,11 +421,55 @@ l_get_files (lua_State *L) {
 						   SVN_DIRENT_ALL,
 						   TRUE,
 						   myfunc,
-						   NULL,
+						   entries,
 						   ctx,
 						   pool);
-    
+   
+	
 	printf ("até ali\n");	
+
+	err = svn_client_ls3 (&entries, NULL, repos_path, &peg_revision, &revision, TRUE, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	printf ("\n\nagora voi ls3\n");
+
+	if (entries == NULL) {
+		printf ("danou-se\n");
+	}
+
+	lua_newtable (L);
+
+	apr_hash_index_t *hi;
+	svn_dirent_t *dirent;
+	svn_dirent_t *val;
+	int j = 1;
+
+	for (hi = apr_hash_first (pool, entries); hi; hi = apr_hash_next (hi)) {
+		
+		char *name;
+
+		apr_hash_this (hi, (void *) &name, NULL, (void *) &val);
+
+		dirent = val;
+
+		printf ("name %s %d %d\n", name, val->created_rev, val->size);
+		
+		/*char *tmp;
+		printf ("dir_ent %d\n", dirent);
+		printf ("dirent %s\n", dirent->name);
+		tmp = malloc (strlen (dir) + 1 + strlen (dirent->name) + 1);
+		strcpy (tmp, dir);
+		strcat (tmp, "/");
+		strcat (tmp, dirent->name);
+
+		svn_revnum_t revision;
+		err = svn_fs_node_created_rev (&revision, txn_root, tmp, pool);
+		IF_ERROR_RETURN (err, pool, L);
+
+		lua_pushnumber (L, revision);
+		lua_setfield (L, -2, dirent->name);
+		printf ("aindaaaaa\n");*/
+	}
 
 	/*
 	apr_hash_t *entries;
@@ -435,9 +501,11 @@ l_get_files (lua_State *L) {
 		lua_pushnumber (L, revision);
 		lua_setfield (L, -2, dirent->name);
 	}
-	*/
+	*/	
 
 	svn_pool_destroy (pool);
+
+	printf ("cabou get_files\n\n");
 
 	return 1;
 }
