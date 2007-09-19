@@ -139,31 +139,37 @@ l_create_dir (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *new_directory = luaL_checkstring (L, 2);
 	
-	svn_revnum_t revision = 0;
-
 	apr_pool_t *pool;
 
 	if (init_pool (&pool) != 0) {
 		return init_pool_error (L);
 	}
-
+	
 	svn_error_t *err;
-	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
-	const char *conflict_str;
 
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
-	IF_ERROR_RETURN (err, pool, L);
- 
-	err = svn_fs_make_dir(txn_root, new_directory, pool);
+	err = svn_fs_initialize (pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	err = svn_repos_fs_commit_txn(&conflict_str, repos, &revision, txn, pool);
+	svn_client_ctx_t *ctx;
+	err = svn_client_create_context (&ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
-  
-	lua_pushinteger (L, revision);
+
+	svn_commit_info_t *commit_info;
+	apr_array_header_t *array;
+
+
+	char tmp [strlen(repos_path)+1+strlen(new_directory)+1];
+	strcpy (tmp, repos_path);
+	strcat (tmp, "/");
+	strcat (tmp, new_directory);
+
+	array = apr_array_make (pool, 1, sizeof (const char *));
+	(*((const char **) apr_array_push (array))) = tmp;
+
+	err = svn_client_mkdir2 (&commit_info, array, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	lua_pushinteger (L, commit_info->revision);
 
 	svn_pool_destroy (pool);
 
@@ -177,32 +183,30 @@ l_create_file (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *new_file = luaL_checkstring (L, 2);
 
-	svn_revnum_t revision = 0;
-
 	apr_pool_t *pool;
-
 
 	if (init_pool (&pool) != 0) {
 		return init_pool_error (L);
 	}
-
+	
 	svn_error_t *err;
-  	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
-	const char *conflict_str;
 
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
-	IF_ERROR_RETURN (err, pool, L);
-  
-	err = svn_fs_make_file(txn_root, new_file, pool);
+	err = svn_fs_initialize (pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	err = svn_repos_fs_commit_txn(&conflict_str, repos, &revision, txn, pool);
+	svn_client_ctx_t *ctx;
+	err = svn_client_create_context (&ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushinteger (L, revision);
+	svn_commit_info_t *commit_info;
+	
+	err = svn_client_import2 (&commit_info, new_file, repos_path, FALSE, FALSE, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	printf ("comitei\n");
+
+
+	lua_pushinteger (L, commit_info->revision);
 
 	svn_pool_destroy (pool);
 	
@@ -332,6 +336,8 @@ l_get_file_content (lua_State *L) {
 }
 
 
+/* If I try to use snv_client_list this should be necessary
+ * I should remove this otherwise */
 static svn_error_t *
 myfunc (void *baton, 
 		const char *path,
@@ -398,10 +404,6 @@ l_get_files (lua_State *L) {
 	}
 	
 	svn_error_t *err;
-	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
 
 	err = svn_fs_initialize (pool);
 	IF_ERROR_RETURN (err, pool, L);
@@ -410,37 +412,14 @@ l_get_files (lua_State *L) {
 	err = svn_client_create_context (&ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
  
-    printf ("aqui\n");	
-
 	apr_hash_t *entries;
-
-	err = svn_client_list (repos_path,
-					       &peg_revision,
-						   &revision,
-						   TRUE,
-						   SVN_DIRENT_ALL,
-						   TRUE,
-						   myfunc,
-						   entries,
-						   ctx,
-						   pool);
-   
-	
-	printf ("até ali\n");	
 
 	err = svn_client_ls3 (&entries, NULL, repos_path, &peg_revision, &revision, TRUE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	printf ("\n\nagora voi ls3\n");
-
-	if (entries == NULL) {
-		printf ("danou-se\n");
-	}
-
 	lua_newtable (L);
 
 	apr_hash_index_t *hi;
-	svn_dirent_t *dirent;
 	svn_dirent_t *val;
 	int j = 1;
 
@@ -450,62 +429,15 @@ l_get_files (lua_State *L) {
 
 		apr_hash_this (hi, (void *) &name, NULL, (void *) &val);
 
-		dirent = val;
+		/*svn_revnum_t revision;
+		err = svn_fs_node_created_rev (&revision, txn_root, name, pool);
+		IF_ERROR_RETURN (err, pool, L);*/
 
-		printf ("name %s %d %d\n", name, val->created_rev, val->size);
-		
-		/*char *tmp;
-		printf ("dir_ent %d\n", dirent);
-		printf ("dirent %s\n", dirent->name);
-		tmp = malloc (strlen (dir) + 1 + strlen (dirent->name) + 1);
-		strcpy (tmp, dir);
-		strcat (tmp, "/");
-		strcat (tmp, dirent->name);
-
-		svn_revnum_t revision;
-		err = svn_fs_node_created_rev (&revision, txn_root, tmp, pool);
-		IF_ERROR_RETURN (err, pool, L);
-
-		lua_pushnumber (L, revision);
-		lua_setfield (L, -2, dirent->name);
-		printf ("aindaaaaa\n");*/
+		lua_pushnumber (L, 1);
+		lua_setfield (L, -2, name);		
 	}
-
-	/*
-	apr_hash_t *entries;
-
-	err = svn_fs_dir_entries (&entries, txn_root, dir, pool);
-	IF_ERROR_RETURN (err, pool, L);
-
-	lua_newtable (L);
-
-	apr_hash_index_t *hi;
-	svn_fs_dirent_t *dirent;
-	void *val;
-	int j = 1;
-
-	for (hi = apr_hash_first (pool, entries); hi; hi = apr_hash_next (hi)) {
-		apr_hash_this (hi, NULL, NULL, &val);
-		dirent = (svn_fs_dirent_t *) val;
-
-		char *tmp;
-		tmp = malloc (strlen (dir) + 1 + strlen (dirent->name) + 1);
-		strcpy (tmp, dir);
-		strcat (tmp, "/");
-		strcat (tmp, dirent->name);
-
-		svn_revnum_t revision;
-		err = svn_fs_node_created_rev (&revision, txn_root, tmp, pool);
-		IF_ERROR_RETURN (err, pool, L);
-
-		lua_pushnumber (L, revision);
-		lua_setfield (L, -2, dirent->name);
-	}
-	*/	
 
 	svn_pool_destroy (pool);
-
-	printf ("cabou get_files\n\n");
 
 	return 1;
 }
@@ -590,34 +522,40 @@ l_get_rev_proplist (lua_State *L) {
 
 	const char *repos_path = luaL_checkstring (L, 1);
 	
-	svn_revnum_t revision =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
+	svn_opt_revision_t revision;
+
+	revision.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
+	if (revision.value.number) {
+		revision.kind = svn_opt_revision_number;
+	} else {
+		revision.kind = svn_opt_revision_head;
+	}
 
 	apr_pool_t *pool;
-
 
 	if (init_pool (&pool) != 0) {
 		return init_pool_error (L);
 	}
 	
 	svn_error_t *err;
-	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
 
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
+	err = svn_fs_initialize (pool);
 	IF_ERROR_RETURN (err, pool, L);
-  
+
+	svn_client_ctx_t *ctx;
+	err = svn_client_create_context (&ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
 	apr_hash_t *entries;
 	apr_hash_index_t *hi;
 	void *val;
 	const void *key;
 
-	err = svn_fs_revision_proplist (&entries, fs, revision, pool);
+	svn_revnum_t rev;
+	err = svn_client_revprop_list (&entries, repos_path, &revision, &rev, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	lua_newtable (L);
-	int j = 1;
 
 	for (hi = apr_hash_first (pool, entries); hi; hi = apr_hash_next (hi)) {
 		apr_hash_this (hi, &key, NULL, &val);
@@ -643,7 +581,14 @@ l_change_rev_prop (lua_State *L) {
 	const char *prop = luaL_checkstring (L, 2);
 	const char *value = lua_isnil (L, 3) ? 0 : luaL_checkstring (L, 3);
 	
-	svn_revnum_t revision =  lua_gettop (L) == 4 ? lua_tointeger (L, 4) : 0;
+	svn_opt_revision_t revision;
+
+	revision.value.number =  lua_gettop (L) == 4 ? lua_tointeger (L, 4) : 0;
+	if (revision.value.number) {
+		revision.kind = svn_opt_revision_number;
+	} else {
+		revision.kind = svn_opt_revision_head;
+	}
 
 	apr_pool_t *pool;
 
@@ -652,23 +597,25 @@ l_change_rev_prop (lua_State *L) {
 	}
 	
 	svn_error_t *err;
-	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
 
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
+	err = svn_fs_initialize (pool);
 	IF_ERROR_RETURN (err, pool, L);
- 
+
+	svn_client_ctx_t *ctx;
+	err = svn_client_create_context (&ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+   	svn_revnum_t rev;	
+	
 	if (value) {
 		const svn_string_t sstring = {value, strlen (value) + 1};
-		err = svn_fs_change_rev_prop (fs, revision, prop, &sstring, pool);
+		err = svn_client_revprop_set (prop, &sstring, repos_path, &revision, &rev, TRUE, ctx, pool);
 	} else {
-		err = svn_fs_change_rev_prop (fs, revision, prop, 0, pool);
+		err = svn_client_revprop_set (prop, 0, repos_path, &revision, &rev, TRUE, ctx, pool);
 	}
 	IF_ERROR_RETURN (err, pool, L);
-
-	lua_pushboolean (L, 1);
+	
+	lua_pushboolean (L, rev);
 
 	svn_pool_destroy (pool);
 
