@@ -7,8 +7,6 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
-#define BUFFER_SIZE 1000
-
 #define IF_ERROR_RETURN(err, pool, L) do { \
 	if (err) { \
 		svn_pool_destroy (pool); \
@@ -17,18 +15,13 @@
 } while (0)
 
 
-/* Returns nil and an error message (Until version 8) */
-/* Now calls lua_error */
+/* Calls lua_error */
 static int
 send_error (lua_State *L, svn_error_t *err) {
-	/*lua_pushnil (L);*/
-	
 	lua_pushstring (L, err->message);
 
 	svn_error_clear (err);
 	
-	/*return 2;*/
-
 	return lua_error (L);
 }
 
@@ -202,9 +195,6 @@ l_create_file (lua_State *L) {
 	err = svn_client_import2 (&commit_info, new_file, repos_path, FALSE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	printf ("comitei\n");
-
-
 	lua_pushinteger (L, commit_info->revision);
 
 	svn_pool_destroy (pool);
@@ -213,56 +203,12 @@ l_create_file (lua_State *L) {
 }
 
 
-/* Changes the content of a file. 
- * Returns the new version of the file system */
-static int
-l_change_file (lua_State *L) {
-	const char *repos_path = luaL_checkstring (L, 1);
-	const char *file = luaL_checkstring (L, 2);
-	const char *new_text = luaL_checkstring (L, 3);
+svn_error_t *
+write_fn (void *baton, const char *data, apr_size_t *len) {
 
-	svn_revnum_t revision = 0;
+	svn_stringbuf_appendbytes (baton, data, *len);
 
-	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
-	svn_error_t *err;
-	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
-	svn_stream_t *stream;
-	const char *conflict_str;
-
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
-	IF_ERROR_RETURN (err, pool, L);
-
-	stream = svn_stream_empty (pool);
-	
-	err = svn_fs_apply_text (&stream, txn_root, file, NULL, pool);
-	IF_ERROR_RETURN (err, pool, L);
-
-
-	err = svn_stream_printf (stream, pool, "%s", new_text);
-	IF_ERROR_RETURN (err, pool, L);
-	
-	svn_stream_close (stream);
-	IF_ERROR_RETURN (err, pool, L);
-	
-	err = svn_repos_fs_commit_txn(&conflict_str, repos, 
-			&revision, txn, pool);
-
-	
-	IF_ERROR_RETURN (err, pool, L);
-
-	lua_pushinteger (L, revision);
-
-	svn_pool_destroy (pool);
-
-	return 1;
+	return NULL;
 }
 
 /* Gets the content of a file 
@@ -272,62 +218,46 @@ l_get_file_content (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *file = luaL_checkstring (L, 2);
 
-	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	svn_opt_revision_t peg_revision;
+	svn_opt_revision_t revision;
+
+	peg_revision.kind = svn_opt_revision_unspecified;
+
+	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	if (revision.value.number) {
+		revision.kind = svn_opt_revision_number;
+	} else {
+		revision.kind = svn_opt_revision_head;
+	}
 
 	apr_pool_t *pool;
-
 
 	if (init_pool (&pool) != 0) {
 		return init_pool_error (L);
 	}
 	
 	svn_error_t *err;
-	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
+
+	err = svn_fs_initialize (pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	svn_client_ctx_t *ctx;
+	err = svn_client_create_context (&ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
 	svn_stream_t *stream;
-	const char *conflict_str;
 
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
-	IF_ERROR_RETURN (err, pool, L);
-  
-	err = svn_fs_file_contents (&stream, txn_root, file, pool);
-	IF_ERROR_RETURN (err, pool, L);
+	stream = svn_stream_empty (pool);
+	svn_stream_set_write (stream, write_fn);
 
-	char *buffer = malloc (BUFFER_SIZE);
-	int currentSize;
-	char tmp [BUFFER_SIZE];
-	apr_size_t len = BUFFER_SIZE;
-	
-	err = svn_stream_read (stream, buffer, &len);
+	svn_stringbuf_t *buffer = svn_stringbuf_create ("\0", pool);
+
+	svn_stream_set_baton (stream, buffer);
+
+	err = svn_client_cat2 (stream, repos_path, &peg_revision, &revision, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	currentSize = len;
-
-	while (len == BUFFER_SIZE) {
-		
-		err = svn_stream_read (stream, tmp, &len);
-		IF_ERROR_RETURN (err, pool, L);
-
-		if (len == BUFFER_SIZE) {
-			buffer = realloc (buffer, currentSize + len);
-			memcpy (buffer + currentSize, tmp, len);
-			currentSize += len;
-		} else {
-			buffer = realloc (buffer, currentSize + len + 1);
-			memcpy (buffer + currentSize, tmp, len);
-			currentSize += len;
-		}
-	}
-
-	err = svn_stream_close (stream);
-	IF_ERROR_RETURN (err, pool, L);
-
-	buffer [currentSize] = '\0';
-	currentSize++;
-
-	lua_pushstring (L, buffer);
+	lua_pushstring (L, buffer->data);
 
 	svn_pool_destroy (pool);
 
@@ -335,46 +265,116 @@ l_get_file_content (lua_State *L) {
 }
 
 
-/* If I try to use snv_client_list this should be necessary
- * I should remove this otherwise */
-static svn_error_t *
-myfunc (void *baton, 
-		const char *path,
-		const svn_dirent_t *dirent,
-	    const svn_lock_t *lock,
-	    const char *abs_path,
-	    apr_pool_t *pool)
-{
-	printf ("eu sou myfunc\n");
-	
+static int
+l_commit (lua_State *L) {
+	const char *repos_path = luaL_checkstring (L, 1);
+	const char *file = luaL_checkstring (L, 2);
 
-	const char *entryname;
+	apr_pool_t *pool;
 
-	if (strcmp(path, "") == 0)
-	{   
-	   	if (dirent->kind == svn_node_file)
-		   	entryname = svn_path_basename(abs_path, pool);
-		else
-			return SVN_NO_ERROR;
-	}   
-	else
-		entryname = path;
-
-	printf ("path: %s\n", path);
-
-	/*
-	printf ("abs_path: %s\n", abs_path);
-
-	printf ("dirent size: %d\n", dirent->size);
-	
-	printf ("dirent last: %s\n", dirent->last_author);*/
-
-	if (baton != NULL) {
-		printf ("baton nao eh null\n");
-	} else {
-		printf ("baton eh null\n");
+	if (init_pool (&pool) != 0) {
+		return init_pool_error (L);
 	}
-}	
+	
+	svn_error_t *err;
+
+	err = svn_fs_initialize (pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	svn_client_ctx_t *ctx;
+	err = svn_client_create_context (&ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+ 
+	apr_array_header_t *array;
+
+	char tmp [strlen(repos_path)+1+strlen(file)+1];
+	strcpy (tmp, repos_path);
+	strcat (tmp, "/");
+	strcpy (tmp, file);
+
+	array = apr_array_make (pool, 1, sizeof (const char *));
+	(*((const char **) apr_array_push (array))) = tmp;
+
+	svn_commit_info_t *commit_info = NULL;
+
+	err = svn_client_commit3 (&commit_info, array, TRUE, FALSE, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);	
+
+	if (commit_info == NULL) {
+		lua_pushnil (L);
+	} else {
+		lua_pushnumber (L, commit_info->revision);
+	}
+
+	svn_pool_destroy (pool);
+
+	return 1;
+}
+
+
+static int
+l_checkout (lua_State *L) {
+	const char *repos_path = luaL_checkstring (L, 1);
+	const char *dir = luaL_checkstring (L, 2);
+
+	svn_opt_revision_t revision;
+	svn_opt_revision_t peg_revision;
+
+	peg_revision.kind = svn_opt_revision_unspecified;
+
+	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	if (revision.value.number) {
+		revision.kind = svn_opt_revision_number;
+	} else {
+		revision.kind = svn_opt_revision_head;
+	}
+
+	apr_pool_t *pool;
+
+	if (init_pool (&pool) != 0) {
+		return init_pool_error (L);
+	}
+	
+	svn_error_t *err;
+
+	err = svn_fs_initialize (pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	svn_client_ctx_t *ctx;
+	err = svn_client_create_context (&ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+ 
+	svn_revnum_t rev;
+
+	printf ("vivo em checkout\n");
+	const char *true_url;
+	err = svn_opt_parse_path(&peg_revision, &true_url, repos_path, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	true_url = svn_path_canonicalize(true_url, pool);
+
+	printf ("true = %s\n", true_url);
+
+	dir = svn_path_basename(dir, pool);
+    dir = svn_path_uri_decode(dir, pool);
+
+	printf ("dir = %s\n", dir);
+
+
+	err = svn_client_checkout2 (&rev, repos_path, dir, &peg_revision, &revision, TRUE, FALSE, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+	
+	printf ("fiz o checkout\n");	
+
+	lua_pushnumber (L, rev);
+
+	svn_pool_destroy (pool);
+
+	return 1;
+}
+
+
+
 
 /* Gets the list of files in a directory. 
  * Returns this list indicating also in which version
@@ -420,7 +420,6 @@ l_get_files (lua_State *L) {
 
 	apr_hash_index_t *hi;
 	svn_dirent_t *val;
-	int j = 1;
 
 	for (hi = apr_hash_first (pool, entries); hi; hi = apr_hash_next (hi)) {
 		
@@ -630,56 +629,14 @@ l_change_rev_prop (lua_State *L) {
 
 
 
-/* Tests if there is a file with the given name
- * in the repository
- * Returns true if the file already exists and
- * false otherwise */
-static int
-l_file_exists (lua_State *L) {
-
-	const char *repos_path = luaL_checkstring (L, 1);
-	const char *file = luaL_checkstring (L, 2);
-	
-	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
-
-	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
-	svn_error_t *err;
-	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
-
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
-	IF_ERROR_RETURN (err, pool, L);
-  
-	svn_boolean_t res;
-
-	err = svn_fs_is_file (&res, txn_root, file, pool);
-	IF_ERROR_RETURN (err, pool, L);
-
-	lua_pushboolean (L, res);
-
-	svn_pool_destroy (pool);
-
-	return 1;
-
-}
-
-
-
 static const struct luaL_Reg luasvn [] = {
-	{"change_file", l_change_file},
+	{"checkout", l_checkout},
 	{"change_rev_prop", l_change_rev_prop},
+	{"commit", l_commit},
 	{"create_dir", l_create_dir},
 	{"create_file", l_create_file},
 	{"create_repos", l_create_repos},
 	{"delete_repos", l_delete_repos},
-	{"file_exists", l_file_exists},
 	{"get_file_content", l_get_file_content},
 	{"get_file_history", l_get_file_history},
 	{"get_files", l_get_files},
