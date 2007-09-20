@@ -157,7 +157,6 @@ l_create_dir (lua_State *L) {
 	svn_commit_info_t *commit_info;
 	apr_array_header_t *array;
 
-
 	char tmp [strlen(repos_path)+1+strlen(new_directory)+1];
 	strcpy (tmp, repos_path);
 	strcat (tmp, "/");
@@ -442,6 +441,25 @@ l_get_files (lua_State *L) {
 	return 1;
 }
 
+svn_error_t *
+log_receiver (void *baton,
+			  apr_hash_t *changed_paths,
+			  svn_revnum_t revision,
+			  const char *author,
+			  const char *date,
+			  const char *message,
+			  apr_pool_t *pool) 
+{
+
+	lua_pushnumber ((lua_State*)baton, revision);
+		
+	lua_pushstring ((lua_State*)baton, date);
+
+	lua_settable ((lua_State*)baton, -3);
+
+	return NULL;
+}
+
 
 /* Gets the history of a file 
  * Returns a table with all revisions in which the file was modified and the
@@ -452,61 +470,48 @@ l_get_file_history (lua_State *L) {
 	const char *repos_path = luaL_checkstring (L, 1);
 	const char *file = luaL_checkstring (L, 2);
 	
-	svn_revnum_t revision =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
-	
-	apr_pool_t *pool;
+	svn_opt_revision_t start, end;
+	svn_opt_revision_t peg_revision;
 
+	peg_revision.kind = svn_opt_revision_unspecified;
+	end.kind = svn_opt_revision_head;
+	start.kind = svn_opt_revision_number;
+
+	start.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	if (start.value.number) {
+		start.kind = svn_opt_revision_number;
+	} 
+
+	apr_pool_t *pool;
 
 	if (init_pool (&pool) != 0) {
 		return init_pool_error (L);
 	}
 	
 	svn_error_t *err;
-	svn_repos_t *repos;
-	svn_fs_t *fs;
-	svn_fs_txn_t *txn;
-	svn_fs_root_t *txn_root;
 
-
-	/* In this case, init_fs_root does more than what you need, because a transaction
-	 * node is initialized and what we really want it is a revision node
-	 */
-	err = init_fs_root (repos_path, &repos, &fs, &revision, &txn, &txn_root, pool);
-	IF_ERROR_RETURN (err, pool, L);
-  
-	svn_fs_root_t *rev_root;
- 
-	/* Creates a revision node using the variables that have already been initialized by init_fs_root	
-	 */
-	err = svn_fs_revision_root (&rev_root, fs, revision, pool);
+	err = svn_fs_initialize (pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	svn_fs_history_t *history;
-
-	err = svn_fs_node_history (&history, rev_root, file, pool);
+	svn_client_ctx_t *ctx;
+	err = svn_client_create_context (&ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	const char *tmp;
-	svn_revnum_t rev;
+	apr_array_header_t *array;
+
+	char tmp [strlen(repos_path)+1+strlen(file)+1];
+	strcpy (tmp, repos_path);
+	strcat (tmp, "/");
+	strcat (tmp, file);
+
+	array = apr_array_make (pool, 1, sizeof (const char *));
+	(*((const char **) apr_array_push (array))) = tmp;
+
+	const int limit = 0;
 	lua_newtable (L);
-	int j = 1;
 
-	err = svn_fs_history_prev (&history, history, FALSE, pool);
-	IF_ERROR_RETURN (err, pool, L);
-	
-	while (history != NULL) {
-		err = svn_fs_history_location (&tmp, &rev, history, pool);
-		IF_ERROR_RETURN (err, pool, L);
-
-		lua_pushnumber (L, rev);
-		
-		lua_pushstring (L, tmp);
-
-		lua_settable (L, -3);
-		
-		err = svn_fs_history_prev (&history, history, FALSE, pool);
-		IF_ERROR_RETURN (err, pool, L);
-	}
+	svn_client_log3 (array, &peg_revision, &start, &end, limit, 
+					FALSE, TRUE, log_receiver, L, ctx, pool);
 
 	svn_pool_destroy (pool);
 
