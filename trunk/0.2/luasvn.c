@@ -2,6 +2,10 @@
 #include <svn_pools.h>
 #include <svn_error.h>
 #include <svn_client.h>
+#include <svn_dso.h>
+#include <svn_path.h>
+#include <svn_config.h>
+#include <svn_cmdline.h>
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -50,35 +54,58 @@ init_pool_error (lua_State *L) {
 }
 
 
-/* This function initializes pointers to the repository file system */
-static svn_error_t *
-init_fs_root (const char *repos_path, svn_repos_t **repos, svn_fs_t **fs, svn_revnum_t *rev,
-		svn_fs_txn_t **txn, svn_fs_root_t **txn_root, apr_pool_t *pool) {
-
+static int
+init_function (svn_client_ctx_t **ctx, apr_pool_t **pool, lua_State *L) {
+	apr_allocator_t *allocator;
+	svn_auth_baton_t *ab;
+	svn_config_t *cfg;
 	svn_error_t *err;
 
-	err = svn_fs_initialize (pool);
-	if (err)
-		return err;
-
-	err = svn_repos_open(repos, repos_path, pool);
-	if (err)
-		return err;
-
-	*fs = svn_repos_fs (*repos);
-
-	if (*rev == 0) { /* Should get the youngest revision */
-		err = svn_fs_youngest_rev(rev, *fs, pool);
-		if (err)
-			return err;
+	if (svn_cmdline_init("svn", stderr) != EXIT_SUCCESS) {
+		err = malloc (sizeof (svn_error_t *));
+		err->message = "Error initializing svn\n";
+		return send_error (L, err);
 	}
-  
-	err = svn_fs_begin_txn2 (txn, *fs, *rev, 0, pool);
-	if (err)
-		return err;
 
-	err = svn_fs_txn_root(txn_root, *txn, pool);
-	return err;
+	if (apr_allocator_create(&allocator)) {
+		err = malloc (sizeof (svn_error_t *));
+		err->message = "Error creating allocator\n";
+		return send_error (L, err);
+	}
+
+	apr_allocator_max_free_set(allocator, SVN_ALLOCATOR_RECOMMENDED_MAX_FREE);
+
+  	*pool = svn_pool_create_ex(NULL, allocator);
+	apr_allocator_owner_set(allocator, *pool);
+
+  	err = svn_ra_initialize(*pool);
+	IF_ERROR_RETURN (err, *pool, L);
+
+	err = svn_client_create_context (ctx, *pool);
+	IF_ERROR_RETURN (err, *pool, L);
+
+	err = svn_config_get_config(&((*ctx)->config),	NULL, *pool);
+	IF_ERROR_RETURN (err, *pool, L);
+
+	cfg = apr_hash_get((*ctx)->config, SVN_CONFIG_CATEGORY_CONFIG,
+			APR_HASH_KEY_STRING);
+
+
+	err = svn_cmdline_setup_auth_baton(&ab,
+			FALSE,
+			NULL,
+			NULL,
+			NULL,
+			FALSE,
+			cfg,
+			(*ctx)->cancel_func,
+			(*ctx)->cancel_baton,
+			*pool);
+	IF_ERROR_RETURN (err, *pool, L);
+
+	(*ctx)->auth_baton = ab;
+
+	return 0;
 }
 
 
@@ -133,19 +160,10 @@ l_create_dir (lua_State *L) {
 	const char *new_directory = luaL_checkstring (L, 2);
 	
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
+
+	init_function (&ctx, &pool, L);
 
 	svn_commit_info_t *commit_info;
 	apr_array_header_t *array;
@@ -176,19 +194,10 @@ l_create_file (lua_State *L) {
 	const char *new_file = luaL_checkstring (L, 2);
 
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
+
+	init_function (&ctx, &pool, L);
 
 	svn_commit_info_t *commit_info;
 	
@@ -231,19 +240,10 @@ l_get_file_content (lua_State *L) {
 	}
 
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
+
+	init_function (&ctx, &pool, L);
 
 	svn_stream_t *stream;
 
@@ -271,20 +271,11 @@ l_commit (lua_State *L) {
 	const char *file = luaL_checkstring (L, 2);
 
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
- 
+
+	init_function (&ctx, &pool, L);
+
 	apr_array_header_t *array;
 
 	char tmp [strlen(repos_path)+1+strlen(file)+1];
@@ -329,21 +320,13 @@ l_checkout (lua_State *L) {
 		revision.kind = svn_opt_revision_head;
 	}
 
+
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
- 
+
+	init_function (&ctx, &pool, L);
+
 	svn_revnum_t rev;
 
 	printf ("vivo em checkout\n");
@@ -358,14 +341,9 @@ l_checkout (lua_State *L) {
 	dir = svn_path_basename(dir, pool);
     dir = svn_path_uri_decode(dir, pool);
 
-	printf ("dir = %s\n", dir);
-
-
 	err = svn_client_checkout2 (&rev, repos_path, dir, &peg_revision, &revision, TRUE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 	
-	printf ("fiz o checkout\n");	
-
 	lua_pushnumber (L, rev);
 
 	svn_pool_destroy (pool);
@@ -396,21 +374,13 @@ l_get_files (lua_State *L) {
 		revision.kind = svn_opt_revision_head;
 	}
 
+
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
- 
+
+	init_function (&ctx, &pool, L);
+
 	apr_hash_t *entries;
 
 	err = svn_client_ls3 (&entries, NULL, repos_path, &peg_revision, &revision, TRUE, ctx, pool);
@@ -481,20 +451,12 @@ l_get_file_history (lua_State *L) {
 		start.kind = svn_opt_revision_number;
 	} 
 
+
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
+
+	init_function (&ctx, &pool, L);
 
 	apr_array_header_t *array;
 
@@ -536,19 +498,10 @@ l_get_rev_proplist (lua_State *L) {
 	}
 
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
+
+	init_function (&ctx, &pool, L);
 
 	apr_hash_t *entries;
 	apr_hash_index_t *hi;
@@ -595,19 +548,10 @@ l_change_rev_prop (lua_State *L) {
 	}
 
 	apr_pool_t *pool;
-
-	if (init_pool (&pool) != 0) {
-		return init_pool_error (L);
-	}
-	
 	svn_error_t *err;
-
-	err = svn_fs_initialize (pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	svn_client_ctx_t *ctx;
-	err = svn_client_create_context (&ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
+
+	init_function (&ctx, &pool, L);
 
    	svn_revnum_t rev;	
 	
