@@ -119,8 +119,8 @@ l_add (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
-	svn_commit_info_t *commit_info;
-	
+	path = svn_path_canonicalize(path, pool);
+
 	err = svn_client_add3 (path, TRUE, FALSE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
@@ -148,8 +148,7 @@ write_fn (void *baton, const char *data, apr_size_t *len) {
  * Returns the content of a file */
 static int
 l_cat (lua_State *L) {
-	const char *repos_path = luaL_checkstring (L, 1);
-	const char *file = luaL_checkstring (L, 2);
+	const char *path = luaL_checkstring (L, 1);
 
 	svn_opt_revision_t peg_revision;
 	svn_opt_revision_t revision;
@@ -169,6 +168,8 @@ l_cat (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize(path, pool);
+
 	svn_stream_t *stream;
 
 	stream = svn_stream_empty (pool);
@@ -178,7 +179,7 @@ l_cat (lua_State *L) {
 
 	svn_stream_set_baton (stream, buffer);
 
-	err = svn_client_cat2 (stream, repos_path, &peg_revision, &revision, ctx, pool);
+	err = svn_client_cat2 (stream, path, &peg_revision, &revision, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushstring (L, buffer->data);
@@ -191,7 +192,7 @@ l_cat (lua_State *L) {
 
 static int
 l_checkout (lua_State *L) {
-	const char *repos_path = luaL_checkstring (L, 1);
+	const char *path = luaL_checkstring (L, 1);
 	const char *dir = luaL_checkstring (L, 2);
 
 	svn_opt_revision_t revision;
@@ -206,28 +207,28 @@ l_checkout (lua_State *L) {
 		revision.kind = svn_opt_revision_head;
 	}
 
-
 	apr_pool_t *pool;
 	svn_error_t *err;
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize(path, pool);
+	dir = svn_path_canonicalize(dir, pool);
+
+
 	svn_revnum_t rev;
 
-	printf ("vivo em checkout\n");
 	const char *true_url;
-	err = svn_opt_parse_path(&peg_revision, &true_url, repos_path, pool);
+	err = svn_opt_parse_path(&peg_revision, &true_url, path, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	true_url = svn_path_canonicalize(true_url, pool);
 
-	printf ("true = %s\n", true_url);
-
 	dir = svn_path_basename(dir, pool);
     dir = svn_path_uri_decode(dir, pool);
 
-	err = svn_client_checkout2 (&rev, repos_path, dir, &peg_revision, &revision, TRUE, FALSE, ctx, pool);
+	err = svn_client_checkout2 (&rev, path, dir, &peg_revision, &revision, TRUE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 	
 	lua_pushnumber (L, rev);
@@ -242,8 +243,7 @@ l_checkout (lua_State *L) {
 
 static int
 l_commit (lua_State *L) {
-	const char *repos_path = luaL_checkstring (L, 1);
-	const char *file = luaL_checkstring (L, 2);
+	const char *path = luaL_checkstring (L, 1);
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -251,15 +251,12 @@ l_commit (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize(path, pool);
+
 	apr_array_header_t *array;
 
-	char tmp [strlen(repos_path)+1+strlen(file)+1];
-	strcpy (tmp, repos_path);
-	strcat (tmp, "/");
-	strcpy (tmp, file);
-
 	array = apr_array_make (pool, 1, sizeof (const char *));
-	(*((const char **) apr_array_push (array))) = tmp;
+	(*((const char **) apr_array_push (array))) = path;
 
 	svn_commit_info_t *commit_info = NULL;
 
@@ -277,13 +274,19 @@ l_commit (lua_State *L) {
 	return 1;
 }
 
-
-/* Creates a file. 
- * Returns the new version of the file system */
 static int
-l_import (lua_State *L) {
-	const char *repos_path = luaL_checkstring (L, 1);
-	const char *new_file = luaL_checkstring (L, 2);
+l_copy (lua_State *L) {
+	const char *src_path = luaL_checkstring (L, 1);
+	const char *dest_path = luaL_checkstring (L, 2);
+
+	svn_opt_revision_t revision;
+
+	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	if (revision.value.number) {
+		revision.kind = svn_opt_revision_number;
+	} else {
+		revision.kind = svn_opt_revision_head;
+	}
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -291,9 +294,80 @@ l_import (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	src_path = svn_path_canonicalize(src_path, pool);
+	dest_path = svn_path_canonicalize(dest_path, pool);
+
+	svn_commit_info_t *commit_info = NULL;
+
+	err = svn_client_copy3 (&commit_info, src_path, &revision, dest_path, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);	
+
+	if (commit_info == NULL) {
+		lua_pushnil (L);
+	} else {
+		lua_pushnumber (L, commit_info->revision);
+	}
+
+	svn_pool_destroy (pool);
+
+	return 1;
+}
+
+
+static int
+l_delete (lua_State *L) {
+
+	const char *path = luaL_checkstring (L, 1);
+	
+	apr_pool_t *pool;
+	svn_error_t *err;
+	svn_client_ctx_t *ctx;
+
+	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize(path, pool);
+
+	apr_array_header_t *array;
+
+	array = apr_array_make (pool, 1, sizeof (const char *));
+	(*((const char **) apr_array_push (array))) = path;
+
+	svn_commit_info_t *commit_info;
+
+	lua_newtable (L);
+
+	err = svn_client_delete2 (&commit_info, array, FALSE, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	lua_pushinteger (L, commit_info->revision);
+	
+	svn_pool_destroy (pool);
+
+	return 1;
+
+}
+
+
+
+/* Creates a file. 
+ * Returns the new version of the file system */
+static int
+l_import (lua_State *L) {
+	const char *path = luaL_checkstring (L, 1);
+	const char *url = luaL_checkstring (L, 2);
+
+	apr_pool_t *pool;
+	svn_error_t *err;
+	svn_client_ctx_t *ctx;
+
+	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize(path, pool);
+	url = svn_path_canonicalize(url, pool);
+
 	svn_commit_info_t *commit_info;
 	
-	err = svn_client_import2 (&commit_info, new_file, repos_path, FALSE, FALSE, ctx, pool);
+	err = svn_client_import2 (&commit_info, path, url, FALSE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushinteger (L, commit_info->revision);
@@ -309,8 +383,7 @@ l_import (lua_State *L) {
  * a file was modified by the last time */
 static int
 l_list (lua_State *L) {
-	const char *repos_path = luaL_checkstring (L, 1);
-	const char *dir = luaL_checkstring (L, 2);
+	const char *path = luaL_checkstring (L, 1);
 
 	svn_opt_revision_t revision;
 	svn_opt_revision_t peg_revision;
@@ -324,16 +397,17 @@ l_list (lua_State *L) {
 		revision.kind = svn_opt_revision_head;
 	}
 
-
 	apr_pool_t *pool;
 	svn_error_t *err;
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize(path, pool);
+
 	apr_hash_t *entries;
 
-	err = svn_client_ls3 (&entries, NULL, repos_path, &peg_revision, &revision, TRUE, ctx, pool);
+	err = svn_client_ls3 (&entries, NULL, path, &peg_revision, &revision, TRUE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	lua_newtable (L);
@@ -387,8 +461,7 @@ log_receiver (void *baton,
 static int
 l_log (lua_State *L) {
 
-	const char *repos_path = luaL_checkstring (L, 1);
-	const char *file = luaL_checkstring (L, 2);
+	const char *path = luaL_checkstring (L, 1);
 	
 	svn_opt_revision_t start, end;
 	svn_opt_revision_t peg_revision;
@@ -409,21 +482,19 @@ l_log (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize(path, pool);
+
 	apr_array_header_t *array;
 
-	char tmp [strlen(repos_path)+1+strlen(file)+1];
-	strcpy (tmp, repos_path);
-	strcat (tmp, "/");
-	strcat (tmp, file);
-
 	array = apr_array_make (pool, 1, sizeof (const char *));
-	(*((const char **) apr_array_push (array))) = tmp;
+	(*((const char **) apr_array_push (array))) = path;
 
 	const int limit = 0;
 	lua_newtable (L);
 
-	svn_client_log3 (array, &peg_revision, &start, &end, limit, 
+	err = svn_client_log3 (array, &peg_revision, &start, &end, limit, 
 					FALSE, TRUE, log_receiver, L, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
 
 	svn_pool_destroy (pool);
 
@@ -432,13 +503,64 @@ l_log (lua_State *L) {
 }
 
 
+static int
+l_merge (lua_State *L) {
+	const char *source1 = luaL_checkstring (L, 1);
+	
+	svn_opt_revision_t rev1;
+
+	rev1.value.number = lua_tointeger (L, 2);
+	if (rev1.value.number) {
+		rev1.kind = svn_opt_revision_number;
+	} else {
+		rev1.kind = svn_opt_revision_head;
+	}
+
+	const char *source2 = luaL_checkstring (L, 3);
+
+	svn_opt_revision_t rev2;
+
+	rev2.value.number = lua_tointeger (L, 4);
+	if (rev2.value.number) {
+		rev2.kind = svn_opt_revision_number;
+	} else {
+		rev2.kind = svn_opt_revision_head;
+	}
+
+	const char *wcpath = luaL_checkstring (L, 5);
+
+	apr_pool_t *pool;
+	svn_error_t *err;
+	svn_client_ctx_t *ctx;
+
+	init_function (&ctx, &pool, L);
+
+
+	source1 = svn_path_canonicalize(source1, pool);
+	source2 = svn_path_canonicalize(source2, pool);
+	wcpath = svn_path_canonicalize(wcpath, pool);
+
+	err = svn_client_merge2 (source1, &rev1, source2, &rev2, wcpath,
+			TRUE, TRUE, FALSE, FALSE, NULL, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);	
+
+	lua_pushboolean (L, 1);
+
+	svn_pool_destroy (pool);
+
+	return 1;
+}
+
+
+
+
+
 /* Creates a directory. 
  * Returns the new version of the file system */
 static int
 l_mkdir (lua_State *L) {
 	
-	const char *repos_path = luaL_checkstring (L, 1);
-	const char *new_directory = luaL_checkstring (L, 2);
+	const char *path = luaL_checkstring (L, 1);
 	
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -446,21 +568,49 @@ l_mkdir (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize(path, pool);
+
 	svn_commit_info_t *commit_info;
 	apr_array_header_t *array;
 
-	char tmp [strlen(repos_path)+1+strlen(new_directory)+1];
-	strcpy (tmp, repos_path);
-	strcat (tmp, "/");
-	strcat (tmp, new_directory);
-
 	array = apr_array_make (pool, 1, sizeof (const char *));
-	(*((const char **) apr_array_push (array))) = tmp;
+	(*((const char **) apr_array_push (array))) = path;
 
 	err = svn_client_mkdir2 (&commit_info, array, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	lua_pushinteger (L, commit_info->revision);
+
+	svn_pool_destroy (pool);
+
+	return 1;
+}
+
+
+static int
+l_move (lua_State *L) {
+	const char *src_path = luaL_checkstring (L, 1);
+	const char *dest_path = luaL_checkstring (L, 2);
+
+	apr_pool_t *pool;
+	svn_error_t *err;
+	svn_client_ctx_t *ctx;
+
+	init_function (&ctx, &pool, L);
+
+	src_path = svn_path_canonicalize(src_path, pool);
+	dest_path = svn_path_canonicalize(dest_path, pool);
+
+	svn_commit_info_t *commit_info = NULL;
+
+	err = svn_client_move4 (&commit_info, src_path, dest_path, FALSE, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);	
+
+	if (commit_info == NULL) {
+		lua_pushnil (L);
+	} else {
+		lua_pushnumber (L, commit_info->revision);
+	}
 
 	svn_pool_destroy (pool);
 
@@ -475,7 +625,7 @@ l_mkdir (lua_State *L) {
 /* Creates a repository */
 static int
 l_repos_create (lua_State *L) {
-	const char *repos_path = luaL_checkstring (L, 1);
+	const char *path = luaL_checkstring (L, 1);
 	svn_repos_t *repos_p;
 
 	apr_pool_t *pool;
@@ -484,9 +634,11 @@ l_repos_create (lua_State *L) {
 		return init_pool_error (L);
 	}
 
+	path = svn_path_canonicalize(path, pool);
+	
 	svn_error_t *err;
 
-	err = svn_repos_create (&repos_p, repos_path, NULL, NULL, NULL, NULL, pool);
+	err = svn_repos_create (&repos_p, path, NULL, NULL, NULL, NULL, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	return 0;
@@ -496,17 +648,19 @@ l_repos_create (lua_State *L) {
 /* Deletes a repository */
 static int
 l_repos_delete (lua_State *L) {
-	const char *repos_path = luaL_checkstring (L, 1);
+	const char *path = luaL_checkstring (L, 1);
 
 	apr_pool_t *pool;
 
 	if (init_pool (&pool) != 0) {
 		return init_pool_error (L);
 	}
+	
+	path = svn_path_canonicalize(path, pool);
 
 	svn_error_t *err;
 
-	err = svn_repos_delete (repos_path, pool);
+	err = svn_repos_delete (path, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	return 0;
@@ -521,7 +675,7 @@ l_repos_delete (lua_State *L) {
 static int
 l_revprop_list (lua_State *L) {
 
-	const char *repos_path = luaL_checkstring (L, 1);
+	const char *path = luaL_checkstring (L, 1);
 	
 	svn_opt_revision_t revision;
 
@@ -538,13 +692,15 @@ l_revprop_list (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize(path, pool);
+
 	apr_hash_t *entries;
 	apr_hash_index_t *hi;
 	void *val;
 	const void *key;
 
 	svn_revnum_t rev;
-	err = svn_client_revprop_list (&entries, repos_path, &revision, &rev, ctx, pool);
+	err = svn_client_revprop_list (&entries, path, &revision, &rev, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	lua_newtable (L);
@@ -569,7 +725,7 @@ l_revprop_list (lua_State *L) {
 static int
 l_revprop_set (lua_State *L) {
 
-	const char *repos_path = luaL_checkstring (L, 1);
+	const char *path = luaL_checkstring (L, 1);
 	const char *prop = luaL_checkstring (L, 2);
 	const char *value = lua_isnil (L, 3) ? 0 : luaL_checkstring (L, 3);
 	
@@ -588,13 +744,15 @@ l_revprop_set (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize(path, pool);
+
    	svn_revnum_t rev;	
 	
 	if (value) {
 		const svn_string_t sstring = {value, strlen (value) + 1};
-		err = svn_client_revprop_set (prop, &sstring, repos_path, &revision, &rev, TRUE, ctx, pool);
+		err = svn_client_revprop_set (prop, &sstring, path, &revision, &rev, TRUE, ctx, pool);
 	} else {
-		err = svn_client_revprop_set (prop, 0, repos_path, &revision, &rev, TRUE, ctx, pool);
+		err = svn_client_revprop_set (prop, 0, path, &revision, &rev, TRUE, ctx, pool);
 	}
 	IF_ERROR_RETURN (err, pool, L);
 	
@@ -641,8 +799,8 @@ l_update (lua_State *L) {
 	if (result_revs == NULL) {
 		lua_pushnil (L);
 	} else {
-		printf ("apr %d\n", *((int *) apr_array_push (array)));
-		lua_pushnumber (L, *((int *) apr_array_push (array)));
+		int rev = (int) ((int **) (result_revs->elts))[0];
+		lua_pushnumber (L, rev);
 	}
 
 	svn_pool_destroy (pool);
@@ -659,10 +817,14 @@ static const struct luaL_Reg luasvn [] = {
 	{"cat", l_cat},
 	{"checkout", l_checkout},
 	{"commit", l_commit},
+	{"copy", l_copy},
+	{"delete", l_delete},
 	{"import", l_import},
 	{"list", l_list},
 	{"log", l_log},
 	{"mkdir", l_mkdir},
+	{"merge", l_merge},
+	{"move", l_move},
 	{"repos_create", l_repos_create},
 	{"repos_delete", l_repos_delete},
 	{"revprop_list", l_revprop_list},
