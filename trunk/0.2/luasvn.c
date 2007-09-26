@@ -421,11 +421,7 @@ l_list (lua_State *L) {
 
 		apr_hash_this (hi, (void *) &name, NULL, (void *) &val);
 
-		/*svn_revnum_t revision;
-		err = svn_fs_node_created_rev (&revision, txn_root, name, pool);
-		IF_ERROR_RETURN (err, pool, L);*/
-
-		lua_pushnumber (L, 1);
+		lua_pushboolean (L, 1);
 		lua_setfield (L, -2, name);		
 	}
 
