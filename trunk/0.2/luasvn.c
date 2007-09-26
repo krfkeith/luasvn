@@ -124,11 +124,9 @@ l_add (lua_State *L) {
 	err = svn_client_add3 (path, TRUE, FALSE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushboolean (L, 1);
-
 	svn_pool_destroy (pool);
 	
-	return 1;
+	return 0;
 }
 
 
@@ -155,7 +153,7 @@ l_cat (lua_State *L) {
 
 	peg_revision.kind = svn_opt_revision_unspecified;
 
-	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	revision.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
 	if (revision.value.number) {
 		revision.kind = svn_opt_revision_number;
 	} else {
@@ -236,6 +234,26 @@ l_checkout (lua_State *L) {
 	svn_pool_destroy (pool);
 
 	return 1;
+}
+
+static int
+l_cleanup (lua_State *L) {
+	const char *path = luaL_checkstring (L, 1);
+
+	apr_pool_t *pool;
+	svn_error_t *err;
+	svn_client_ctx_t *ctx;
+
+	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize(path, pool);
+
+	err = svn_client_cleanup (path, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
+	
+	svn_pool_destroy (pool);
+
+	return 0;
 }
 
 
@@ -390,7 +408,7 @@ l_list (lua_State *L) {
 
 	peg_revision.kind = svn_opt_revision_unspecified;
 
-	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	revision.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
 	if (revision.value.number) {
 		revision.kind = svn_opt_revision_number;
 	} else {
@@ -466,7 +484,7 @@ l_log (lua_State *L) {
 	end.kind = svn_opt_revision_head;
 	start.kind = svn_opt_revision_number;
 
-	start.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
+	start.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
 	if (start.value.number) {
 		start.kind = svn_opt_revision_number;
 	} 
@@ -540,11 +558,10 @@ l_merge (lua_State *L) {
 			TRUE, TRUE, FALSE, FALSE, NULL, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);	
 
-	lua_pushboolean (L, 1);
 
 	svn_pool_destroy (pool);
 
-	return 1;
+	return 0;
 }
 
 
@@ -752,11 +769,9 @@ l_revprop_set (lua_State *L) {
 	}
 	IF_ERROR_RETURN (err, pool, L);
 	
-	lua_pushboolean (L, rev);
-
 	svn_pool_destroy (pool);
 
-	return 1;
+	return 0;
 
 }
 
@@ -813,6 +828,7 @@ static const struct luaL_Reg luasvn [] = {
 	{"cat", l_cat},
 	{"checkout", l_checkout},
 	{"commit", l_commit},
+	{"cleanup", l_cleanup},
 	{"copy", l_copy},
 	{"delete", l_delete},
 	{"import", l_import},
