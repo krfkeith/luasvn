@@ -214,14 +214,7 @@ l_checkout (lua_State *L) {
 	path = svn_path_canonicalize(path, pool);
 	dir = svn_path_canonicalize(dir, pool);
 
-
 	svn_revnum_t rev;
-
-	const char *true_url;
-	err = svn_opt_parse_path(&peg_revision, &true_url, path, pool);
-	IF_ERROR_RETURN (err, pool, L);
-
-	true_url = svn_path_canonicalize(true_url, pool);
 
 	dir = svn_path_basename(dir, pool);
     dir = svn_path_uri_decode(dir, pool);
@@ -364,6 +357,87 @@ l_delete (lua_State *L) {
 	return 1;
 
 }
+
+
+static int
+l_diff (lua_State *L) {
+	const char *path1 = luaL_checkstring (L, 1);
+
+	svn_opt_revision_t rev1;
+
+	rev1.value.number = lua_tointeger (L, 2);
+	if (rev1.value.number) {
+		rev1.kind = svn_opt_revision_number;
+	} else {
+		rev1.kind = svn_opt_revision_head;
+	}
+	
+	const char *path2 = luaL_checkstring (L, 3);
+
+	svn_opt_revision_t rev2;
+
+	rev2.value.number = lua_tointeger (L, 4);
+	if (rev2.value.number) {
+		rev2.kind = svn_opt_revision_number;
+	} else {
+		rev2.kind = svn_opt_revision_head;
+	}
+
+	const char *outfile = lua_gettop (L) >= 5 ? luaL_checkstring (L, 5) : NULL;
+	
+	const char *errfile = lua_gettop (L) == 6 ? luaL_checkstring (L, 6) : NULL;
+	
+
+	apr_pool_t *pool;
+	svn_error_t *err;
+	svn_client_ctx_t *ctx;
+
+	init_function (&ctx, &pool, L);
+
+	path1 = svn_path_canonicalize(path1, pool);
+	path2 = svn_path_canonicalize(path2, pool);
+
+	apr_file_t *aprout;
+	apr_file_t *aprerr;
+	apr_status_t status;
+
+	if (outfile) {
+		status = apr_file_open (&aprout, outfile, APR_READ | APR_WRITE | APR_CREATE,
+				                APR_OS_DEFAULT, pool);
+	} else {
+		status = apr_file_open_stdout(&aprout, pool);
+	}
+	if (status) {
+		IF_ERROR_RETURN (svn_error_wrap_apr(status, "Can't open output file"), pool, L);
+	}
+
+	if (errfile) {
+		status = apr_file_open (&aprerr, errfile, APR_READ | APR_WRITE | APR_CREATE,
+				                APR_OS_DEFAULT, pool);
+	} else {
+		status = apr_file_open_stderr(&aprerr, pool);
+	}
+	if (status) {
+		IF_ERROR_RETURN (svn_error_wrap_apr(status, "Can't open error file"), pool , L);
+	}
+
+	apr_array_header_t *array;
+
+	array = apr_array_make (pool, 0, sizeof (const char *));
+
+	err = svn_client_diff3 (array, path1, &rev1, path2, &rev2,
+			                TRUE, FALSE, FALSE, FALSE,
+							APR_LOCALE_CHARSET, aprout, aprerr,
+							ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);	
+
+	lua_pushnumber (L, 5);
+
+	svn_pool_destroy (pool);
+
+	return 1;
+}
+
 
 
 
@@ -831,6 +905,7 @@ static const struct luaL_Reg luasvn [] = {
 	{"cleanup", l_cleanup},
 	{"copy", l_copy},
 	{"delete", l_delete},
+	{"diff", l_diff},
 	{"import", l_import},
 	{"list", l_list},
 	{"log", l_log},
