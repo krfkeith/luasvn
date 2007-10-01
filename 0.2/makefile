@@ -1,12 +1,14 @@
 SUBVERSION=-I/usr/local/include/subversion-1
-APR=-I/usr/include/apr-1.0 -I/usr/include/neon
+APR=-I/usr/include/apr-1.0
+NEON=-I/usr/include/neon
+ 
 
 CFLAGS=-Wall -O2 -fpic -D_REENTRANT -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -ggdb \
- -fomit-frame-pointer -pipe -pthread $(SUBVERSION) $(APR) 
+ -fomit-frame-pointer -pipe -pthread $(SUBVERSION) $(APR) $(NEON) 
 
 # If the Subversion is not in the default path, use the -Wl,-R flag
-LDFLAGS=-Wl,-R/usr/local/lib -O -shared -fpic  
-#LDFLAGS=-O -shared -fpic 
+#LDFLAGS=-Wl,-R/usr/local/lib -O -shared -fpic  
+LDFLAGS=-O -shared -fpic 
 
 # --- 
 
