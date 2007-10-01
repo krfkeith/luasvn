@@ -1144,7 +1144,7 @@ print_status(const char *path,
 
 
 			info = apr_psprintf(pool, 			
-					"%c%c%c%c%c%c %c   %6s   %6s %-12s",
+					"%c%c%c%c%c%c %c   %6s   %6s %-12s %s",
 					generate_status_code(status->text_status),
 					generate_status_code(status->prop_status),
 					status->locked ? 'L' : ' ',
@@ -1154,12 +1154,13 @@ print_status(const char *path,
 					ood_status,
 					working_rev,
 					commit_rev,
-					commit_author);
+					commit_author,
+					path);
 
 		}
 		else {
 			info = apr_psprintf(pool, 
-					"%c%c%c%c%c%c %c   %6s\n",
+					"%c%c%c%c%c%c %c   %6s   %s\n",
 					generate_status_code(status->text_status),
 					generate_status_code(status->prop_status),
 					status->locked ? 'L' : ' ',
@@ -1167,19 +1168,21 @@ print_status(const char *path,
 					status->switched ? 'S' : ' ',
 					lock_status,
 					ood_status,
-					working_rev);
+					working_rev,
+					path);
 		}
 	}
 	else {
 		info = apr_psprintf(pool,
-			   	"%c%c%c%c%c%c\n",
+			   	"%c%c%c%c%c%c %s\n",
 				generate_status_code(status->text_status),
 				generate_status_code(status->prop_status),
 				status->locked ? 'L' : ' ',
 				status->copied ? '+' : ' ',
 				status->switched ? 'S' : ' ',
 				((status->entry && status->entry->lock_token)
-				 ? 'K' : ' '));
+				 ? 'K' : ' '),
+				path);
 	}
 
 	lua_pushstring (L, info);
