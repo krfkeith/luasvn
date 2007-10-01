@@ -835,6 +835,8 @@ l_propset (lua_State *L) {
 
 	if (value) {
 		const svn_string_t sstring = {value, strlen (value) + 1};
+		err = svn_subst_translate_string (&sstring, sstring, pool);
+		IF_ERROR_RETURN (err, pool, L);
 		err = svn_client_propset2 (prop, &sstring, path, TRUE, FALSE, ctx, pool);
 	} else {
 		err = svn_client_propset2 (prop, 0, path, TRUE, FALSE, ctx, pool);
