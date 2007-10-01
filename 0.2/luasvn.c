@@ -6,6 +6,7 @@
 #include <svn_path.h>
 #include <svn_config.h>
 #include <svn_cmdline.h>
+#include <svn_subst.h>
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -13,18 +14,19 @@
 
 #define IF_ERROR_RETURN(err, pool, L) do { \
 	if (err) { \
+		svn_string_t *sstring = svn_string_create (err->message, pool); \
+		svn_subst_detranslate_string (&sstring, sstring, FALSE, pool); \
+		const char *message = sstring->data; \
 		svn_pool_destroy (pool); \
-		return send_error (L, err); \
+		return send_error (L, message); \
 	} \
 } while (0)
 
 
 /* Calls lua_error */
 static int
-send_error (lua_State *L, svn_error_t *err) {
-	lua_pushstring (L, err->message);
-
-	svn_error_clear (err);
+send_error (lua_State *L, const char *message) {
+	lua_pushstring (L, message);
 	
 	return lua_error (L);
 }
@@ -49,9 +51,7 @@ init_pool (apr_pool_t **pool) {
 /* Indicates that an error occurred during the pool initialization */
 static int
 init_pool_error (lua_State *L) {
-	svn_error_t *err = malloc (sizeof (svn_error_t *));
-	err->message = "Error initializing the memory pool\n";
-	return send_error (L, err);
+	return send_error (L, "Error initializing the memory pool\n");
 }
 
 
@@ -63,15 +63,11 @@ init_function (svn_client_ctx_t **ctx, apr_pool_t **pool, lua_State *L) {
 	svn_error_t *err;
 
 	if (svn_cmdline_init("svn", stderr) != EXIT_SUCCESS) {
-		err = malloc (sizeof (svn_error_t *));
-		err->message = "Error initializing svn\n";
-		return send_error (L, err);
+		return send_error (L, "Error initializing svn\n");
 	}
 
 	if (apr_allocator_create(&allocator)) {
-		err = malloc (sizeof (svn_error_t *));
-		err->message = "Error creating allocator\n";
-		return send_error (L, err);
+		return send_error (L, "Error creating allocator\n");
 	}
 
 	apr_allocator_max_free_set(allocator, SVN_ALLOCATOR_RECOMMENDED_MAX_FREE);
@@ -834,10 +830,12 @@ l_propset (lua_State *L) {
 	path = svn_path_canonicalize(path, pool);
 
 	if (value) {
-		const svn_string_t sstring = {value, strlen (value) + 1};
-		err = svn_subst_translate_string (&sstring, sstring, pool);
+		svn_string_t *sstring = svn_string_create (value, pool);
+
+		err = svn_subst_translate_string (&sstring, sstring, APR_LOCALE_CHARSET, pool);
 		IF_ERROR_RETURN (err, pool, L);
-		err = svn_client_propset2 (prop, &sstring, path, TRUE, FALSE, ctx, pool);
+		
+		err = svn_client_propset2 (prop, sstring, path, TRUE, FALSE, ctx, pool);
 	} else {
 		err = svn_client_propset2 (prop, 0, path, TRUE, FALSE, ctx, pool);
 	}
@@ -1007,8 +1005,13 @@ l_revprop_set (lua_State *L) {
    	svn_revnum_t rev;	
 	
 	if (value) {
-		const svn_string_t sstring = {value, strlen (value) + 1};
-		err = svn_client_revprop_set (prop, &sstring, url, &revision, &rev, TRUE, ctx, pool);
+
+		svn_string_t *sstring = svn_string_create (value, pool);
+
+		err = svn_subst_translate_string (&sstring, sstring, APR_LOCALE_CHARSET, pool);
+		IF_ERROR_RETURN (err, pool, L);
+		
+		err = svn_client_revprop_set (prop, sstring, url, &revision, &rev, TRUE, ctx, pool);
 	} else {
 		err = svn_client_revprop_set (prop, 0, url, &revision, &rev, TRUE, ctx, pool);
 	}
