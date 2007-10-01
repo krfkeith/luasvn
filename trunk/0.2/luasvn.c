@@ -29,6 +29,7 @@ send_error (lua_State *L, svn_error_t *err) {
 	return lua_error (L);
 }
 
+
 /* Initializes the memory pool */
 static int
 init_pool (apr_pool_t **pool) {
@@ -108,12 +109,14 @@ init_function (svn_client_ctx_t **ctx, apr_pool_t **pool, lua_State *L) {
 	return 0;
 }
 
+
 static enum svn_opt_revision_kind
 get_revision_kind (const char *path) {
 	if (svn_path_is_url (path))
 		return svn_opt_revision_head;
 	return svn_opt_revision_base;
 }
+
 
 static int
 l_add (lua_State *L) {
@@ -136,8 +139,6 @@ l_add (lua_State *L) {
 }
 
 
-
-
 static svn_error_t *
 write_fn (void *baton, const char *data, apr_size_t *len) {
 
@@ -147,9 +148,6 @@ write_fn (void *baton, const char *data, apr_size_t *len) {
 }
 
 
-
-/* Gets the content of a file 
- * Returns the content of a file */
 static int
 l_cat (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
@@ -232,6 +230,7 @@ l_checkout (lua_State *L) {
 	return 1;
 }
 
+
 static int
 l_cleanup (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
@@ -251,8 +250,6 @@ l_cleanup (lua_State *L) {
 
 	return 0;
 }
-
-
 
 
 static int
@@ -287,6 +284,7 @@ l_commit (lua_State *L) {
 
 	return 1;
 }
+
 
 static int
 l_copy (lua_State *L) {
@@ -444,10 +442,6 @@ l_diff (lua_State *L) {
 }
 
 
-
-
-/* Creates a file. 
- * Returns the new version of the file system */
 static int
 l_import (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
@@ -475,9 +469,6 @@ l_import (lua_State *L) {
 }
 
 
-/* Gets the list of files in a directory. 
- * Returns this list indicating also in which version
- * a file was modified by the last time */
 static int
 l_list (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
@@ -560,9 +551,6 @@ log_receiver (void *baton,
 }
 
 
-/* Gets the history of a file 
- * Returns a table with all revisions in which the file was modified and the
- * name of the file in that revision */
 static int
 l_log (lua_State *L) {
 
@@ -655,11 +643,6 @@ l_merge (lua_State *L) {
 }
 
 
-
-
-
-/* Creates a directory. 
- * Returns the new version of the file system */
 static int
 l_mkdir (lua_State *L) {
 	
@@ -778,7 +761,6 @@ l_propget (lua_State *L) {
 }
 
 
-
 static int
 l_proplist (lua_State *L) {
 
@@ -836,8 +818,6 @@ l_proplist (lua_State *L) {
 
 }
 
-
-
 static int
 l_propset (lua_State *L) {
 
@@ -867,7 +847,7 @@ l_propset (lua_State *L) {
 
 }
 
-/* Creates a repository */
+
 static int
 l_repos_create (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
@@ -890,7 +870,6 @@ l_repos_create (lua_State *L) {
 }
 
 
-/* Deletes a repository */
 static int
 l_repos_delete (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
@@ -950,9 +929,6 @@ l_revprop_get (lua_State *L) {
 }
 
 
-/* Gets the property list of a revision
- * Returns a table with all properties of a revision and
- * the associated values  */
 static int
 l_revprop_list (lua_State *L) {
 
@@ -1001,8 +977,7 @@ l_revprop_list (lua_State *L) {
 
 }
 
-/* Changes the value of a property 
- * Returns true in case of success  */
+
 static int
 l_revprop_set (lua_State *L) {
 
@@ -1042,7 +1017,6 @@ l_revprop_set (lua_State *L) {
 	return 0;
 
 }
-
 
 
 typedef struct status_bt {
@@ -1209,6 +1183,7 @@ print_status(const char *path,
 	return SVN_NO_ERROR;
 }
 
+
 static void
 status_func (void *baton, const char *path, svn_wc_status2_t *status) {
 	apr_pool_t *pool = ((status_bt *)baton)->pool;
@@ -1257,10 +1232,6 @@ l_status (lua_State *L) {
 }
 
 
-
-
-
-
 static int
 l_update (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
@@ -1303,9 +1274,6 @@ l_update (lua_State *L) {
 
 	return 1;
 }
-
-
-
 
 
 static const struct luaL_Reg luasvn [] = {
