@@ -202,7 +202,7 @@ l_checkout (lua_State *L) {
 	if (revision.value.number) {
 		revision.kind = svn_opt_revision_number;
 	} else {
-		revision.kind = get_revision_kind (path);
+		revision.kind = svn_opt_revision_head;
 	}
 
 	apr_pool_t *pool;
@@ -1247,7 +1247,7 @@ l_update (lua_State *L) {
 	if (revision.value.number) {
 		revision.kind = svn_opt_revision_number;
 	} else {
-		revision.kind = get_revision_kind (path);
+		revision.kind = svn_opt_revision_head;
 	}
 
 	apr_pool_t *pool;
