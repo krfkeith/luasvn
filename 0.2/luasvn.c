@@ -106,6 +106,79 @@ init_function (svn_client_ctx_t **ctx, apr_pool_t **pool, lua_State *L) {
 }
 
 
+struct log_msg_baton
+{
+  const char *editor_cmd;  /* editor specified via --editor-cmd, else NULL */
+  const char *message;  /* the message. */
+  const char *message_encoding; /* the locale/encoding of the message. */
+  const char *base_dir; /* the base directory for an external edit. UTF-8! */
+  const char *tmpfile_left; /* the tmpfile left by an external edit. UTF-8! */
+  svn_boolean_t non_interactive; /* if true, don't pop up an editor */
+  apr_hash_t *config; /* client configuration hash */
+  svn_boolean_t keep_locks; /* Keep repository locks? */
+  apr_pool_t *pool; /* a pool. */
+};
+
+
+svn_error_t *
+make_log_msg_baton(void **baton,
+		const char *message,
+		const char *base_dir /* UTF-8! */,
+		apr_hash_t *config,
+		apr_pool_t *pool)
+{
+  struct log_msg_baton *lmb = apr_palloc(pool, sizeof(*lmb));
+
+  lmb->message = message;
+
+  lmb->editor_cmd = NULL;;
+  
+  if (config)
+  {
+ 	  svn_config_t *cfg = apr_hash_get(config, SVN_CONFIG_CATEGORY_CONFIG, 
+                                       APR_HASH_KEY_STRING);
+      svn_config_get(cfg, &(lmb->message_encoding),
+                     SVN_CONFIG_SECTION_MISCELLANY,
+                     SVN_CONFIG_OPTION_LOG_ENCODING,
+                     NULL);
+  } else 
+  {
+	  lmb->message_encoding = APR_LOCALE_CHARSET;
+  }
+
+  lmb->base_dir = base_dir ? base_dir : "";
+  lmb->tmpfile_left = NULL;
+  lmb->config = config;
+  lmb->keep_locks = FALSE;
+  lmb->non_interactive = TRUE;
+  lmb->pool = pool;
+  *baton = lmb;
+  return SVN_NO_ERROR;
+}
+
+static svn_error_t *
+log_msg_func2 (const char **log_msg,
+		       const char **tmp_file,
+			   const apr_array_header_t *commit_items,
+			   void *baton,
+			   apr_pool_t *pool)
+{
+	struct log_msg_baton *lmb = baton;
+
+	svn_string_t *log_msg_string = svn_string_create(lmb->message, pool);
+
+  	SVN_ERR(svn_subst_translate_string(&log_msg_string, log_msg_string,
+				APR_LOCALE_CHARSET, pool));
+
+	*log_msg = log_msg_string->data;
+
+	return SVN_NO_ERROR;
+}
+
+
+
+
+
 static enum svn_opt_revision_kind
 get_revision_kind (const char *path) {
 	if (svn_path_is_url (path))
@@ -140,7 +213,7 @@ write_fn (void *baton, const char *data, apr_size_t *len) {
 
 	svn_stringbuf_appendbytes (baton, data, *len);
 
-	return NULL;
+	return SVN_NO_ERROR;
 }
 
 
@@ -250,7 +323,8 @@ l_cleanup (lua_State *L) {
 
 static int
 l_commit (lua_State *L) {
-	const char *path = luaL_checkstring (L, 1);
+	const char *path = lua_gettop (L) >= 1 ? luaL_checkstring (L, 1) : "";
+	const char *message = lua_gettop (L) == 2 ? luaL_checkstring (L, 2) : "";
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -261,11 +335,14 @@ l_commit (lua_State *L) {
 	path = svn_path_canonicalize(path, pool);
 
 	apr_array_header_t *array;
+	svn_commit_info_t *commit_info = NULL;
 
 	array = apr_array_make (pool, 1, sizeof (const char *));
 	(*((const char **) apr_array_push (array))) = path;
 
-	svn_commit_info_t *commit_info = NULL;
+	make_log_msg_baton (&(ctx->log_msg_baton2), message, path, ctx->config, pool);
+	
+	ctx->log_msg_func2 = log_msg_func2;
 
 	err = svn_client_commit3 (&commit_info, array, TRUE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);	
@@ -286,6 +363,7 @@ static int
 l_copy (lua_State *L) {
 	const char *src_path = luaL_checkstring (L, 1);
 	const char *dest_path = luaL_checkstring (L, 2);
+	const char *message = lua_gettop (L) == 3 ? luaL_checkstring (L, 3) : "";
 
 	svn_opt_revision_t revision;
 
@@ -307,6 +385,10 @@ l_copy (lua_State *L) {
 
 	svn_commit_info_t *commit_info = NULL;
 
+	if (svn_path_is_url (dest_path)) {
+		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+	}
+
 	err = svn_client_copy3 (&commit_info, src_path, &revision, dest_path, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);	
 
@@ -326,6 +408,7 @@ static int
 l_delete (lua_State *L) {
 
 	const char *path = luaL_checkstring (L, 1);
+	const char *message = lua_gettop (L) == 2 ? luaL_checkstring (L, 2) : "";
 	
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -336,18 +419,25 @@ l_delete (lua_State *L) {
 	path = svn_path_canonicalize(path, pool);
 
 	apr_array_header_t *array;
+	svn_commit_info_t *commit_info = NULL;
 
 	array = apr_array_make (pool, 1, sizeof (const char *));
 	(*((const char **) apr_array_push (array))) = path;
 
-	svn_commit_info_t *commit_info;
-
 	lua_newtable (L);
+
+	if (svn_path_is_url (path)) {
+		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+	}
 
 	err = svn_client_delete2 (&commit_info, array, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushinteger (L, commit_info->revision);
+	if (commit_info == NULL) {
+		lua_pushnil (L);
+	} else {
+		lua_pushnumber (L, commit_info->revision);
+	}
 	
 	svn_pool_destroy (pool);
 
@@ -442,6 +532,7 @@ static int
 l_import (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
 	const char *url = luaL_checkstring (L, 2);
+	const char *message = lua_gettop (L) == 3 ? luaL_checkstring (L, 3) : "";
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -453,7 +544,9 @@ l_import (lua_State *L) {
 	url = svn_path_canonicalize(url, pool);
 
 	svn_commit_info_t *commit_info;
-	
+
+	make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+
 	err = svn_client_import2 (&commit_info, path, url, FALSE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
@@ -643,7 +736,8 @@ static int
 l_mkdir (lua_State *L) {
 	
 	const char *path = luaL_checkstring (L, 1);
-	
+	const char *message = lua_gettop (L) == 2 ? luaL_checkstring (L, 2) : "";
+
 	apr_pool_t *pool;
 	svn_error_t *err;
 	svn_client_ctx_t *ctx;
@@ -657,6 +751,10 @@ l_mkdir (lua_State *L) {
 
 	array = apr_array_make (pool, 1, sizeof (const char *));
 	(*((const char **) apr_array_push (array))) = path;
+
+	if (svn_path_is_url (path)) {
+		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+	}
 
 	err = svn_client_mkdir2 (&commit_info, array, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
@@ -677,6 +775,7 @@ static int
 l_move (lua_State *L) {
 	const char *src_path = luaL_checkstring (L, 1);
 	const char *dest_path = luaL_checkstring (L, 2);
+	const char *message = lua_gettop (L) == 3 ? luaL_checkstring (L, 3) : "";
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -688,6 +787,10 @@ l_move (lua_State *L) {
 	dest_path = svn_path_canonicalize(dest_path, pool);
 
 	svn_commit_info_t *commit_info = NULL;
+
+	if (svn_path_is_url (dest_path)) {
+		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+	}
 
 	err = svn_client_move4 (&commit_info, src_path, dest_path, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);	
@@ -1242,11 +1345,11 @@ l_status (lua_State *L) {
 
 static int
 l_update (lua_State *L) {
-	const char *path = luaL_checkstring (L, 1);
+	const char *path = lua_gettop (L) >= 1 ? luaL_checkstring (L, 1) : "";
 
 	svn_opt_revision_t revision;
 
-	revision.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
+	revision.value.number = lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
 	if (revision.value.number) {
 		revision.kind = svn_opt_revision_number;
 	} else {

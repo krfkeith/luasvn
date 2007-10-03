@@ -7,8 +7,8 @@ CFLAGS=-Wall -O2 -fpic -D_REENTRANT -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -ggdb \
  -fomit-frame-pointer -pipe -pthread $(SUBVERSION) $(APR) $(NEON) 
 
 # If the Subversion is not in the default path, use the -Wl,-R flag
-#LDFLAGS=-Wl,-R/usr/local/lib -O -shared -fpic  
-LDFLAGS=-O -shared -fpic 
+LDFLAGS=-Wl,-R/usr/local/lib -O -shared -fpic  
+#LDFLAGS=-O -shared -fpic 
 
 # --- 
 
