@@ -224,14 +224,14 @@ l_cat (lua_State *L) {
 	svn_opt_revision_t peg_revision;
 	svn_opt_revision_t revision;
 
-	revision.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
-	if (revision.value.number) {
-		revision.kind = svn_opt_revision_number;
-	} else {
-		revision.kind = get_revision_kind (path);
-	}
+	peg_revision.kind = svn_opt_revision_unspecified;
 
-	peg_revision = revision;
+	if (lua_gettop (L) < 2 || lua_isnil (L, 2)) {
+		revision.kind = get_revision_kind (path);	
+	} else {
+		revision.kind = svn_opt_revision_number;
+		revision.value.number = lua_tointeger (L, 3);
+	}
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -271,11 +271,11 @@ l_checkout (lua_State *L) {
 
 	peg_revision.kind = svn_opt_revision_unspecified;
 
-	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
-	if (revision.value.number) {
-		revision.kind = svn_opt_revision_number;
+	if (lua_gettop (L) < 3 || lua_isnil (L, 3)) {
+		revision.kind = svn_opt_revision_head;	
 	} else {
-		revision.kind = svn_opt_revision_head;
+		revision.kind = svn_opt_revision_number;
+		revision.value.number = lua_tointeger (L, 3);
 	}
 
 	apr_pool_t *pool;
@@ -292,7 +292,7 @@ l_checkout (lua_State *L) {
 	err = svn_client_checkout2 (&rev, path, dir, &peg_revision, &revision, TRUE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 	
-	lua_pushnumber (L, rev);
+	lua_pushinteger (L, rev);
 
 	svn_pool_destroy (pool);
 
@@ -350,7 +350,7 @@ l_commit (lua_State *L) {
 	if (commit_info == NULL) {
 		lua_pushnil (L);
 	} else {
-		lua_pushnumber (L, commit_info->revision);
+		lua_pushinteger (L, commit_info->revision);
 	}
 
 	svn_pool_destroy (pool);
@@ -395,7 +395,7 @@ l_copy (lua_State *L) {
 	if (commit_info == NULL) {
 		lua_pushnil (L);
 	} else {
-		lua_pushnumber (L, commit_info->revision);
+		lua_pushinteger (L, commit_info->revision);
 	}
 
 	svn_pool_destroy (pool);
@@ -436,7 +436,7 @@ l_delete (lua_State *L) {
 	if (commit_info == NULL) {
 		lua_pushnil (L);
 	} else {
-		lua_pushnumber (L, commit_info->revision);
+		lua_pushinteger (L, commit_info->revision);
 	}
 	
 	svn_pool_destroy (pool);
@@ -558,6 +558,31 @@ l_import (lua_State *L) {
 }
 
 
+static svn_error_t *
+list_func (void *baton,
+		   const char *path,
+		   const svn_dirent_t *dirent,
+		   const svn_lock_t *lock,
+		   const char *abs_path,
+		   apr_pool_t *pool)
+{
+	lua_State *L = baton;
+
+	if (strcmp (path, "") == 0) {
+		if (dirent->kind == svn_node_file) {
+			path = svn_path_basename (abs_path, pool);
+		} else {
+			return SVN_NO_ERROR;
+		}
+	} 	
+	
+	lua_pushfstring (L, "%s%s", path, dirent->kind == svn_node_dir ? "/" : "");
+	lua_pushinteger (L, dirent->created_rev);
+	lua_settable (L, -3);
+
+	return SVN_NO_ERROR;
+}
+
 static int
 l_list (lua_State *L) {
 	const char *path = luaL_checkstring (L, 1);
@@ -565,13 +590,16 @@ l_list (lua_State *L) {
 	svn_opt_revision_t revision;
 	svn_opt_revision_t peg_revision;
 
-	revision.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
-	if (revision.value.number) {
-		revision.kind = svn_opt_revision_number;
+	peg_revision.kind = svn_opt_revision_unspecified;
+
+	if (lua_gettop (L) < 2 || lua_isnil (L, 2)) {
+		revision.kind = get_revision_kind (path);	
 	} else {
-		revision.kind = get_revision_kind (path);
+		revision.kind = svn_opt_revision_number;
+		revision.value.number = lua_tointeger (L, 3);
 	}
 
+	
 	peg_revision = revision;
 
 	apr_pool_t *pool;
@@ -582,25 +610,11 @@ l_list (lua_State *L) {
 
 	path = svn_path_canonicalize(path, pool);
 
-	apr_hash_t *entries;
-
-	err = svn_client_ls3 (&entries, NULL, path, &peg_revision, &revision, TRUE, ctx, pool);
-	IF_ERROR_RETURN (err, pool, L);
-
 	lua_newtable (L);
 
-	apr_hash_index_t *hi;
-	svn_dirent_t *val;
-
-	for (hi = apr_hash_first (pool, entries); hi; hi = apr_hash_next (hi)) {
-		
-		char *name;
-
-		apr_hash_this (hi, (void *) &name, NULL, (void *) &val);
-
-		lua_pushboolean (L, 1);
-		lua_setfield (L, -2, name);		
-	}
+	err = svn_client_list (path, &peg_revision, &revision, TRUE, SVN_DIRENT_ALL, 
+			               TRUE, list_func, L, ctx, pool);
+	IF_ERROR_RETURN (err, pool, L);
 
 	svn_pool_destroy (pool);
 
@@ -618,7 +632,7 @@ log_receiver (void *baton,
 			  apr_pool_t *pool) 
 {
 
-	lua_pushnumber ((lua_State*)baton, revision);
+	lua_pushinteger ((lua_State*)baton, revision);
 	
 	lua_newtable ((lua_State*)baton);
 
@@ -762,7 +776,7 @@ l_mkdir (lua_State *L) {
 	if (commit_info == NULL) {
 		lua_pushnil (L);
 	} else {
-		lua_pushnumber (L, commit_info->revision);
+		lua_pushinteger (L, commit_info->revision);
 	}
 
 	svn_pool_destroy (pool);
@@ -798,7 +812,7 @@ l_move (lua_State *L) {
 	if (commit_info == NULL) {
 		lua_pushnil (L);
 	} else {
-		lua_pushnumber (L, commit_info->revision);
+		lua_pushinteger (L, commit_info->revision);
 	}
 
 	svn_pool_destroy (pool);
@@ -1378,7 +1392,7 @@ l_update (lua_State *L) {
 		lua_pushnil (L);
 	} else {
 		int rev = (int) ((int **) (result_revs->elts))[0];
-		lua_pushnumber (L, rev);
+		lua_pushinteger (L, rev);
 	}
 
 	svn_pool_destroy (pool);
