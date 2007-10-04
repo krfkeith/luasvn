@@ -227,10 +227,10 @@ l_cat (lua_State *L) {
 	peg_revision.kind = svn_opt_revision_unspecified;
 
 	if (lua_gettop (L) < 2 || lua_isnil (L, 2)) {
-		revision.kind = get_revision_kind (path);	
+		revision.kind = get_revision_kind (path);
 	} else {
 		revision.kind = svn_opt_revision_number;
-		revision.value.number = lua_tointeger (L, 3);
+		revision.value.number = lua_tointeger (L, 2);
 	}
 
 	apr_pool_t *pool;
@@ -363,16 +363,17 @@ static int
 l_copy (lua_State *L) {
 	const char *src_path = luaL_checkstring (L, 1);
 	const char *dest_path = luaL_checkstring (L, 2);
-	const char *message = lua_gettop (L) == 3 ? luaL_checkstring (L, 3) : "";
 
 	svn_opt_revision_t revision;
 
-	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
-	if (revision.value.number) {
-		revision.kind = svn_opt_revision_number;
+	if (lua_gettop (L) < 3 || lua_isnil (L, 3)) {
+		revision.kind = svn_opt_revision_unspecified;
 	} else {
-		revision.kind = get_revision_kind (src_path);
+		revision.kind = svn_opt_revision_number;
+		revision.value.number = lua_tointeger (L, 3);
 	}
+
+	const char *message = lua_gettop (L) == 4 ? luaL_checkstring (L, 4) : "";
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -387,6 +388,7 @@ l_copy (lua_State *L) {
 
 	if (svn_path_is_url (dest_path)) {
 		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+		ctx->log_msg_func2 = log_msg_func2;
 	}
 
 	err = svn_client_copy3 (&commit_info, src_path, &revision, dest_path, ctx, pool);
@@ -599,7 +601,6 @@ l_list (lua_State *L) {
 		revision.value.number = lua_tointeger (L, 3);
 	}
 
-	
 	peg_revision = revision;
 
 	apr_pool_t *pool;
