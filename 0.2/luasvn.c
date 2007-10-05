@@ -591,7 +591,7 @@ list_func (void *baton,
 
 static int
 l_list (lua_State *L) {
-	const char *path = luaL_checkstring (L, 1);
+	const char *path = lua_gettop (L) >= 1 ? luaL_checkstring (L, 1) : "";
 
 	svn_opt_revision_t revision;
 	svn_opt_revision_t peg_revision;
@@ -602,10 +602,8 @@ l_list (lua_State *L) {
 		revision.kind = get_revision_kind (path);	
 	} else {
 		revision.kind = svn_opt_revision_number;
-		revision.value.number = lua_tointeger (L, 3);
+		revision.value.number = lua_tointeger (L, 2);
 	}
-
-	peg_revision = revision;
 
 	apr_pool_t *pool;
 	svn_error_t *err;
