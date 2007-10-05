@@ -660,19 +660,27 @@ log_receiver (void *baton,
 static int
 l_log (lua_State *L) {
 
-	const char *path = luaL_checkstring (L, 1);
+	const char *path = lua_gettop (L) >= 1 ? luaL_checkstring (L, 1) : "";
 	
 	svn_opt_revision_t start, end;
 	svn_opt_revision_t peg_revision;
 
 	peg_revision.kind = svn_opt_revision_unspecified;
-	end.kind = svn_opt_revision_head;
 	start.kind = svn_opt_revision_number;
+	
+	if (lua_gettop (L) < 2 || lua_isnil (L, 2)) {
+		start.value.number = 0;
+	} else {
+		start.value.number = lua_tointeger (L, 2);
+	}
 
-	start.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
-	if (start.value.number) {
-		start.kind = svn_opt_revision_number;
-	} 
+	if (lua_gettop (L) < 3 || lua_isnil (L, 3)) {
+		end.kind = get_revision_kind (path);
+	} else {
+		end.kind = svn_opt_revision_number;
+		end.value.number = lua_tointeger (L, 3);
+	}
+
 
 	apr_pool_t *pool;
 	svn_error_t *err;
