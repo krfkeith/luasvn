@@ -172,6 +172,8 @@ log_msg_func2 (const char **log_msg,
 
 	*log_msg = log_msg_string->data;
 
+	*tmp_file = NULL;
+
 	return SVN_NO_ERROR;
 }
 
@@ -430,6 +432,7 @@ l_delete (lua_State *L) {
 
 	if (svn_path_is_url (path)) {
 		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+		ctx->log_msg_func2 = log_msg_func2;
 	}
 
 	err = svn_client_delete2 (&commit_info, array, FALSE, ctx, pool);
@@ -548,6 +551,7 @@ l_import (lua_State *L) {
 	svn_commit_info_t *commit_info;
 
 	make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+	ctx->log_msg_func2 = log_msg_func2;
 
 	err = svn_client_import2 (&commit_info, path, url, FALSE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
@@ -769,6 +773,7 @@ l_mkdir (lua_State *L) {
 
 	if (svn_path_is_url (path)) {
 		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+		ctx->log_msg_func2 = log_msg_func2;
 	}
 
 	err = svn_client_mkdir2 (&commit_info, array, ctx, pool);
@@ -805,6 +810,7 @@ l_move (lua_State *L) {
 
 	if (svn_path_is_url (dest_path)) {
 		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+		ctx->log_msg_func2 = log_msg_func2;
 	}
 
 	err = svn_client_move4 (&commit_info, src_path, dest_path, FALSE, ctx, pool);
