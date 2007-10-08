@@ -715,25 +715,30 @@ l_merge (lua_State *L) {
 	
 	svn_opt_revision_t rev1;
 
-	rev1.value.number = lua_tointeger (L, 2);
-	if (rev1.value.number) {
-		rev1.kind = svn_opt_revision_number;
-	} else {
+	if (lua_isnil (L, 2)) {
 		rev1.kind = svn_opt_revision_head;
+	} else {
+		rev1.kind = svn_opt_revision_number;
+		rev1.value.number = lua_tointeger (L, 2);
 	}
 
 	const char *source2 = luaL_checkstring (L, 3);
 
 	svn_opt_revision_t rev2;
 
-	rev2.value.number = lua_tointeger (L, 4);
-	if (rev2.value.number) {
-		rev2.kind = svn_opt_revision_number;
-	} else {
+	if (lua_isnil (L, 4)) {
 		rev2.kind = svn_opt_revision_head;
+	} else {
+		rev2.kind = svn_opt_revision_number;
+		rev2.value.number = lua_tointeger (L, 4);
 	}
 
-	const char *wcpath = luaL_checkstring (L, 5);
+	const char *wcpath;
+	if (lua_gettop (L) < 5 || lua_isnil (L, 5)) {
+		wcpath = "";
+	} else {
+		wcpath = luaL_checkstring (L, 5);
+	}
 
 	apr_pool_t *pool;
 	svn_error_t *err;
