@@ -848,14 +848,14 @@ l_propget (lua_State *L) {
 	svn_opt_revision_t peg_revision;
 	svn_opt_revision_t revision;
 
-	revision.value.number =  lua_gettop (L) == 3 ? lua_tointeger (L, 3) : 0;
-	if (revision.value.number) {
-		revision.kind = svn_opt_revision_number;
-	} else {
+	if (lua_gettop (L) < 3 || lua_isnil (L, 3)) {
 		revision.kind = svn_opt_revision_unspecified;
+	} else {
+		revision.kind = svn_opt_revision_number;
+		revision.value.number = lua_tointeger (L, 3);
 	}
 
-	peg_revision = revision;
+	peg_revision.kind = svn_opt_revision_unspecified;
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -900,15 +900,14 @@ l_proplist (lua_State *L) {
 	svn_opt_revision_t peg_revision;
 	svn_opt_revision_t revision;
 
-	revision.value.number =  lua_gettop (L) == 2 ? lua_tointeger (L, 2) : 0;
-
-	if (revision.value.number) {
-		revision.kind = svn_opt_revision_number;
-	} else {
+	if (lua_gettop (L) < 2 || lua_isnil (L, 2)) {
 		revision.kind = svn_opt_revision_unspecified;
+	} else {
+		revision.kind = svn_opt_revision_number;
+		revision.value.number = lua_tointeger (L, 2);
 	}	
 
-	peg_revision = revision;
+	peg_revision.kind = svn_opt_revision_unspecified;
 
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -919,6 +918,8 @@ l_proplist (lua_State *L) {
 	path = svn_path_canonicalize(path, pool);
 
 	apr_array_header_t *props;
+
+	int is_url = svn_path_is_url (path);
 
 	err = svn_client_proplist2 (&props, path, &peg_revision, &revision, TRUE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
@@ -931,6 +932,24 @@ l_proplist (lua_State *L) {
 		const void *key;
 		void *val;
 		svn_client_proplist_item_t *item = ((svn_client_proplist_item_t **)props->elts)[i];
+		int j;
+
+		printf ("i = %d\n", i);
+		const char *name_local;
+		if (is_url) {
+			name_local = svn_path_local_style (item->node_name->data, pool);
+		} else {
+			name_local = item->node_name->data;
+		}
+
+		printf ("namelocal %s\n", name_local);
+
+
+		lua_pushstring (L, name_local);
+
+		lua_newtable (L);
+		j = 0;
+
 
 		apr_hash_index_t *hi;
 		for (hi = apr_hash_first (pool, item->prop_hash); hi; hi = apr_hash_next (hi)) {
@@ -940,7 +959,11 @@ l_proplist (lua_State *L) {
 
 			lua_pushstring (L, s->data);
 			lua_setfield (L, -2, (char *) key);
+			++j;
 		}
+
+		lua_settable (L, -3);
+
 	}
 
 	svn_pool_destroy (pool);
