@@ -14,11 +14,11 @@
 
 #define IF_ERROR_RETURN(err, pool, L) do { \
 	if (err) { \
-		svn_string_t *sstring = svn_string_create (err->message, pool); \
-		svn_subst_detranslate_string (&sstring, sstring, FALSE, pool); \
-		const char *message = sstring->data; \
-		svn_pool_destroy (pool); \
-		return send_error (L, message); \
+	svn_string_t *sstring = svn_string_create (err->message, pool); \
+	svn_subst_detranslate_string (&sstring, sstring, TRUE, pool); \
+	const char *message = sstring->data; \
+	svn_pool_destroy (pool); \
+	return send_error (L, message); \
 	} \
 } while (0)
 
@@ -117,6 +117,7 @@ struct log_msg_baton
   apr_hash_t *config; /* client configuration hash */
   svn_boolean_t keep_locks; /* Keep repository locks? */
   apr_pool_t *pool; /* a pool. */
+  lua_State *L;
 };
 
 
@@ -125,7 +126,8 @@ make_log_msg_baton(void **baton,
 		const char *message,
 		const char *base_dir /* UTF-8! */,
 		apr_hash_t *config,
-		apr_pool_t *pool)
+		apr_pool_t *pool,
+		lua_State *L)
 {
   struct log_msg_baton *lmb = apr_palloc(pool, sizeof(*lmb));
 
@@ -152,6 +154,7 @@ make_log_msg_baton(void **baton,
   lmb->keep_locks = FALSE;
   lmb->non_interactive = TRUE;
   lmb->pool = pool;
+  lmb->L = L;
   *baton = lmb;
   return SVN_NO_ERROR;
 }
@@ -165,12 +168,8 @@ log_msg_func2 (const char **log_msg,
 {
 	struct log_msg_baton *lmb = baton;
 
-	svn_string_t *log_msg_string = svn_string_create(lmb->message, pool);
-
-  	SVN_ERR(svn_subst_translate_string(&log_msg_string, log_msg_string,
-				APR_LOCALE_CHARSET, pool));
-
-	*log_msg = log_msg_string->data;
+	svn_error_t *err = svn_utf_cstring_to_utf8 (log_msg, lmb->message, pool);
+	IF_ERROR_RETURN (err, pool, lmb->L);
 
 	*tmp_file = NULL;
 
@@ -342,7 +341,7 @@ l_commit (lua_State *L) {
 	array = apr_array_make (pool, 1, sizeof (const char *));
 	(*((const char **) apr_array_push (array))) = path;
 
-	make_log_msg_baton (&(ctx->log_msg_baton2), message, path, ctx->config, pool);
+	make_log_msg_baton (&(ctx->log_msg_baton2), message, path, ctx->config, pool, L);
 	
 	ctx->log_msg_func2 = log_msg_func2;
 
@@ -389,7 +388,7 @@ l_copy (lua_State *L) {
 	svn_commit_info_t *commit_info = NULL;
 
 	if (svn_path_is_url (dest_path)) {
-		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool, L);
 		ctx->log_msg_func2 = log_msg_func2;
 	}
 
@@ -431,7 +430,7 @@ l_delete (lua_State *L) {
 	lua_newtable (L);
 
 	if (svn_path_is_url (path)) {
-		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool, L);
 		ctx->log_msg_func2 = log_msg_func2;
 	}
 
@@ -549,7 +548,7 @@ l_import (lua_State *L) {
 
 	svn_commit_info_t *commit_info = NULL;
 
-	make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+	make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool, L);
 	ctx->log_msg_func2 = log_msg_func2;
 
 	err = svn_client_import2 (&commit_info, path, url, FALSE, FALSE, ctx, pool);
@@ -785,7 +784,7 @@ l_mkdir (lua_State *L) {
 	(*((const char **) apr_array_push (array))) = path;
 
 	if (svn_path_is_url (path)) {
-		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool, L);
 		ctx->log_msg_func2 = log_msg_func2;
 	}
 
@@ -822,7 +821,7 @@ l_move (lua_State *L) {
 	svn_commit_info_t *commit_info = NULL;
 
 	if (svn_path_is_url (dest_path)) {
-		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool);
+		make_log_msg_baton (&(ctx->log_msg_baton2), message, NULL, ctx->config, pool, L);
 		ctx->log_msg_func2 = log_msg_func2;
 	}
 
@@ -869,10 +868,11 @@ l_propget (lua_State *L) {
 	
 	apr_hash_t *props;
 
-	err = svn_utf_cstring_to_utf8 (&propname, propname, pool);
+	const char *propname_utf8;
+	err = svn_utf_cstring_to_utf8 (&propname_utf8, propname, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	err = svn_client_propget2 (&props, propname, path, &peg_revision, &revision, TRUE, ctx, pool);
+	err = svn_client_propget2 (&props, propname_utf8, path, &peg_revision, &revision, TRUE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	lua_newtable (L);
@@ -951,12 +951,19 @@ l_proplist (lua_State *L) {
 
 		apr_hash_index_t *hi;
 		for (hi = apr_hash_first (pool, item->prop_hash); hi; hi = apr_hash_next (hi)) {
+			const char *pname;
+			svn_string_t *pval;
+			
 			apr_hash_this (hi, &key, NULL, &val);
 
-			svn_string_t *s = (svn_string_t *) val;
+			pname = key;
+			pval = (svn_string_t *) val;
 
-			lua_pushstring (L, s->data);
-			lua_setfield (L, -2, (char *) key);
+			err = svn_cmdline_cstring_from_utf8 (&pname, pname, pool);
+			IF_ERROR_RETURN (err, pool, L);
+
+			lua_pushstring (L, pval->data);
+			lua_setfield (L, -2, pname);
 		}
 
 		lua_settable (L, -3);
@@ -973,8 +980,8 @@ static int
 l_propset (lua_State *L) {
 
 	const char *path = luaL_checkstring (L, 1);
-	const char *prop = luaL_checkstring (L, 2);
-	const char *value = lua_isnil (L, 3) ? 0 : luaL_checkstring (L, 3);
+	const char *propname = luaL_checkstring (L, 2);
+	const char *propval = lua_isnil (L, 3) ? NULL : luaL_checkstring (L, 3);
 	
 	apr_pool_t *pool;
 	svn_error_t *err;
@@ -984,17 +991,16 @@ l_propset (lua_State *L) {
 
 	path = svn_path_canonicalize (path, pool);
 
-	err = svn_utf_cstring_to_utf8 (&prop, prop, pool);
+	const char *propname_utf8;
+	err = svn_utf_cstring_to_utf8 (&propname_utf8, propname, pool);
+	IF_ERROR_RETURN (err, pool, L);
 
-	if (value) {
-		svn_string_t *sstring = svn_string_create (value, pool);
+	if (propval != NULL) {
+		svn_string_t *sstring = svn_string_create (propval, pool);
 
-		err = svn_subst_translate_string (&sstring, sstring, APR_LOCALE_CHARSET, pool);
-		IF_ERROR_RETURN (err, pool, L);
-		
-		err = svn_client_propset2 (prop, sstring, path, TRUE, FALSE, ctx, pool);
+		err = svn_client_propset2 (propname_utf8, sstring, path, TRUE, FALSE, ctx, pool);
 	} else {
-		err = svn_client_propset2 (prop, 0, path, TRUE, FALSE, ctx, pool);
+		err = svn_client_propset2 (propname_utf8, NULL, path, TRUE, FALSE, ctx, pool);
 	}
 	IF_ERROR_RETURN (err, pool, L);
 	
@@ -1071,13 +1077,23 @@ l_revprop_get (lua_State *L) {
 
 	url = svn_path_canonicalize (url, pool);
 
+	const char *propname_utf8;
+	err = svn_utf_cstring_to_utf8 (&propname_utf8, propname, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
 	svn_string_t *propval;
 	svn_revnum_t rev;
 
-	err = svn_client_revprop_get (propname, &propval, url, &revision, &rev, ctx, pool);
+	err = svn_client_revprop_get (propname_utf8, &propval, url, &revision, &rev, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
-	lua_pushstring (L, propval->data);
+	svn_string_t *printable_val = propval;
+	if (svn_prop_needs_translation (propname_utf8)) {
+		err = svn_subst_detranslate_string (&printable_val, propval, TRUE, pool);
+		IF_ERROR_RETURN (err, pool, L);
+	}
+
+	lua_pushstring (L, printable_val->data);
 
 	svn_pool_destroy (pool);
 
@@ -1120,12 +1136,24 @@ l_revprop_list (lua_State *L) {
 	lua_newtable (L);
 
 	for (hi = apr_hash_first (pool, entries); hi; hi = apr_hash_next (hi)) {
-		apr_hash_this (hi, &key, NULL, &val);
-		
-		svn_string_t *s = (svn_string_t *) val;
+		const char *pname;
+		svn_string_t *pval;
 
-		lua_pushstring (L, s->data);
-		lua_setfield (L, -2, (char *) key);
+		apr_hash_this (hi, &key, NULL, &val);
+	
+		pname = key;
+
+		pval = (svn_string_t *) val;
+		if (svn_prop_needs_translation (pname)) {
+			err = svn_subst_translate_string (&pval, pval, APR_LOCALE_CHARSET, pool);
+			IF_ERROR_RETURN (err, pool, L);
+		}
+
+		err = svn_cmdline_cstring_from_utf8 (&pname, pname, pool);
+		IF_ERROR_RETURN (err, pool, L);
+
+		lua_pushstring (L, pval->data);
+		lua_setfield (L, -2, pname);
 	}
 
 	svn_pool_destroy (pool);
@@ -1139,8 +1167,8 @@ static int
 l_revprop_set (lua_State *L) {
 
 	const char *url = luaL_checkstring (L, 1);
-	const char *prop = luaL_checkstring (L, 2);
-	const char *value = lua_isnil (L, 3) ? 0 : luaL_checkstring (L, 3);
+	const char *propname = luaL_checkstring (L, 2);
+	const char *propval = lua_isnil (L, 3) ? NULL : luaL_checkstring (L, 3);
 	
 	svn_opt_revision_t revision;
 
@@ -1160,17 +1188,22 @@ l_revprop_set (lua_State *L) {
 	url = svn_path_canonicalize (url, pool);
 
    	svn_revnum_t rev;	
+
+	const char *propname_utf8;
+	err = svn_utf_cstring_to_utf8 (&propname_utf8, propname, pool);
+	IF_ERROR_RETURN (err, pool, L);
+
+	if (propval != NULL) {
+		svn_string_t *sstring = svn_string_create (propval, pool);
+
+		if (svn_prop_needs_translation (propname_utf8)) {
+			err = svn_subst_translate_string (&sstring, sstring, APR_LOCALE_CHARSET, pool);
+			IF_ERROR_RETURN (err, pool, L);
+		}
 	
-	if (value) {
-
-		svn_string_t *sstring = svn_string_create (value, pool);
-
-		err = svn_subst_translate_string (&sstring, sstring, APR_LOCALE_CHARSET, pool);
-		IF_ERROR_RETURN (err, pool, L);
-		
-		err = svn_client_revprop_set (prop, sstring, url, &revision, &rev, TRUE, ctx, pool);
+		err = svn_client_revprop_set (propname_utf8, sstring, url, &revision, &rev, TRUE, ctx, pool);
 	} else {
-		err = svn_client_revprop_set (prop, 0, url, &revision, &rev, TRUE, ctx, pool);
+		err = svn_client_revprop_set (propname_utf8, NULL, url, &revision, &rev, TRUE, ctx, pool);
 	}
 	IF_ERROR_RETURN (err, pool, L);
 	
