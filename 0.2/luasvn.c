@@ -199,6 +199,8 @@ l_add (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize (path, pool);
+
 	err = svn_client_add3 (path, TRUE, FALSE, FALSE, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
@@ -238,6 +240,8 @@ l_cat (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize (path, pool);
 
 	svn_stream_t *stream;
 
@@ -282,6 +286,9 @@ l_checkout (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize (path, pool);
+	dir = svn_path_canonicalize (dir, pool);
+
 	svn_revnum_t rev;
 
 	err = svn_client_checkout2 (&rev, path, dir, &peg_revision, &revision, TRUE, FALSE, ctx, pool);
@@ -304,6 +311,8 @@ l_cleanup (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+	
+	path = svn_path_canonicalize (path, pool);
 
 	err = svn_client_cleanup (path, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
@@ -324,6 +333,8 @@ l_commit (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize (path, pool);
 
 	apr_array_header_t *array;
 	svn_commit_info_t *commit_info = NULL;
@@ -372,6 +383,9 @@ l_copy (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	src_path = svn_path_canonicalize (src_path, pool);
+	dest_path = svn_path_canonicalize (dest_path, pool);
+
 	svn_commit_info_t *commit_info = NULL;
 
 	if (svn_path_is_url (dest_path)) {
@@ -405,6 +419,8 @@ l_delete (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize (path, pool);
 
 	apr_array_header_t *array;
 	svn_commit_info_t *commit_info = NULL;
@@ -473,6 +489,9 @@ l_diff (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path1 = svn_path_canonicalize (path1, pool);
+	path2 = svn_path_canonicalize (path2, pool);
+
 	apr_file_t *aprout;
 	apr_file_t *aprerr;
 	apr_status_t status;
@@ -524,6 +543,9 @@ l_import (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize (path, pool);
+	url = svn_path_canonicalize (url, pool);
 
 	svn_commit_info_t *commit_info = NULL;
 
@@ -591,6 +613,8 @@ l_list (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize (path, pool);
 
 	lua_newtable (L);
 
@@ -666,6 +690,8 @@ l_log (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize (path, pool);
+
 	apr_array_header_t *array;
 
 	array = apr_array_make (pool, 1, sizeof (const char *));
@@ -722,6 +748,11 @@ l_merge (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	source1 = svn_path_canonicalize (source1, pool);
+	source2 = svn_path_canonicalize (source2, pool);
+	wcpath = svn_path_canonicalize (wcpath, pool);
+
+
 	err = svn_client_merge2 (source1, &rev1, source2, &rev2, wcpath,
 			TRUE, TRUE, FALSE, FALSE, NULL, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);	
@@ -744,6 +775,8 @@ l_mkdir (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize (path, pool);
 
 	svn_commit_info_t *commit_info = NULL;
 	apr_array_header_t *array;
@@ -783,6 +816,9 @@ l_move (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	src_path = svn_path_canonicalize (src_path, pool);
+	dest_path = svn_path_canonicalize (dest_path, pool);
+	
 	svn_commit_info_t *commit_info = NULL;
 
 	if (svn_path_is_url (dest_path)) {
@@ -829,6 +865,8 @@ l_propget (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize (path, pool);
+	
 	apr_hash_t *props;
 
 	err = svn_utf_cstring_to_utf8 (&propname, propname, pool);
@@ -882,6 +920,8 @@ l_proplist (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize (path, pool);
+
 	apr_array_header_t *props;
 
 	int is_url = svn_path_is_url (path);
@@ -898,15 +938,12 @@ l_proplist (lua_State *L) {
 		void *val;
 		svn_client_proplist_item_t *item = ((svn_client_proplist_item_t **)props->elts)[i];
 
-		printf ("i = %d\n", i);
 		const char *name_local;
 		if (is_url) {
 			name_local = svn_path_local_style (item->node_name->data, pool);
 		} else {
 			name_local = item->node_name->data;
 		}
-
-		printf ("namelocal %s\n", name_local);
 
 		lua_pushstring (L, name_local);
 
@@ -945,6 +982,8 @@ l_propset (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize (path, pool);
+
 	err = svn_utf_cstring_to_utf8 (&prop, prop, pool);
 
 	if (value) {
@@ -977,6 +1016,8 @@ l_repos_create (lua_State *L) {
 		return init_pool_error (L);
 	}
 
+	path = svn_path_canonicalize (path, pool);
+
 	svn_error_t *err;
 
 	err = svn_repos_create (&repos_p, path, NULL, NULL, NULL, NULL, pool);
@@ -995,6 +1036,8 @@ l_repos_delete (lua_State *L) {
 	if (init_pool (&pool) != 0) {
 		return init_pool_error (L);
 	}
+	
+	path = svn_path_canonicalize (path, pool);
 	
 	svn_error_t *err;
 
@@ -1025,6 +1068,8 @@ l_revprop_get (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	url = svn_path_canonicalize (url, pool);
 
 	svn_string_t *propval;
 	svn_revnum_t rev;
@@ -1060,6 +1105,8 @@ l_revprop_list (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	url = svn_path_canonicalize (url, pool);
 
 	apr_hash_t *entries;
 	apr_hash_index_t *hi;
@@ -1109,6 +1156,8 @@ l_revprop_set (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	url = svn_path_canonicalize (url, pool);
 
    	svn_revnum_t rev;	
 	
@@ -1328,6 +1377,8 @@ l_status (lua_State *L) {
 
 	init_function (&ctx, &pool, L);
 
+	path = svn_path_canonicalize (path, pool);
+
    	svn_revnum_t rev;	
 	status_bt baton;
 	baton.L = L;
@@ -1364,6 +1415,8 @@ l_update (lua_State *L) {
 	svn_client_ctx_t *ctx;
 
 	init_function (&ctx, &pool, L);
+
+	path = svn_path_canonicalize (path, pool);
 
 	apr_array_header_t *array;
 
