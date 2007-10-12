@@ -533,7 +533,7 @@ l_diff (lua_State *L) {
 
 static int
 l_import (lua_State *L) {
-	const char *path = luaL_checkstring (L, 1);
+	const char *path = lua_isnil (L, 1) ? "" : luaL_checkstring (L, 1);
 	const char *url = luaL_checkstring (L, 2);
 	const char *message = (lua_gettop (L) < 3 || lua_isnil (L, 3)) ? "" : luaL_checkstring (L, 3);
 
@@ -1474,7 +1474,7 @@ l_update (lua_State *L) {
 }
 
 
-static const struct luaL_Reg luasvn [] = {
+static const struct luaL_Reg svn [] = {
 	{"add", l_add},
 	{"cat", l_cat},
 	{"checkout", l_checkout},
@@ -1503,8 +1503,8 @@ static const struct luaL_Reg luasvn [] = {
 };
 
 int
-luaopen_luasvn (lua_State *L) {
-	luaL_register (L, "luasvn", luasvn);
+luaopen_svn (lua_State *L) {
+	luaL_register (L, "svn", svn);
 	return 1;
 }
 
