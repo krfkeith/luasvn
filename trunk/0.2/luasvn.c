@@ -452,7 +452,7 @@ l_delete (lua_State *L) {
 
 static int
 l_diff (lua_State *L) {
-	const char *path1 = luaL_checkstring (L, 1);
+	const char *path1 = (lua_gettop (L) < 1 || lua_isnil (L, 1)) ? "" : luaL_checkstring (L, 1);
 
 	svn_opt_revision_t rev1;
 
@@ -520,7 +520,7 @@ l_diff (lua_State *L) {
 	array = apr_array_make (pool, 0, sizeof (const char *));
 
 	err = svn_client_diff3 (array, path1, &rev1, path2, &rev2,
-			                TRUE, FALSE, FALSE, FALSE,
+			                TRUE, TRUE, FALSE, FALSE,
 							APR_LOCALE_CHARSET, aprout, aprerr,
 							ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);	
