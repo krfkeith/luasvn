@@ -700,7 +700,7 @@ l_log (lua_State *L) {
 	lua_newtable (L);
 
 	err = svn_client_log3 (array, &peg_revision, &start, &end, limit, 
-					FALSE, TRUE, log_receiver, L, ctx, pool);
+					FALSE, FALSE, log_receiver, L, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	svn_pool_destroy (pool);
@@ -753,7 +753,7 @@ l_merge (lua_State *L) {
 
 
 	err = svn_client_merge2 (source1, &rev1, source2, &rev2, wcpath,
-			TRUE, TRUE, FALSE, FALSE, NULL, ctx, pool);
+			TRUE, FALSE, FALSE, FALSE, NULL, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);	
 
 
@@ -1201,9 +1201,9 @@ l_revprop_set (lua_State *L) {
 			IF_ERROR_RETURN (err, pool, L);
 		}
 	
-		err = svn_client_revprop_set (propname_utf8, sstring, url, &revision, &rev, TRUE, ctx, pool);
+		err = svn_client_revprop_set (propname_utf8, sstring, url, &revision, &rev, FALSE, ctx, pool);
 	} else {
-		err = svn_client_revprop_set (propname_utf8, NULL, url, &revision, &rev, TRUE, ctx, pool);
+		err = svn_client_revprop_set (propname_utf8, NULL, url, &revision, &rev, FALSE, ctx, pool);
 	}
 	IF_ERROR_RETURN (err, pool, L);
 	
