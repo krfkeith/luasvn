@@ -303,7 +303,7 @@ l_checkout (lua_State *L) {
 
 static int
 l_cleanup (lua_State *L) {
-	const char *path = luaL_checkstring (L, 1);
+	const char *path = (lua_gettop (L) < 1 || lua_isnil (L, 1)) ? "" : luaL_checkstring (L, 1);
 
 	apr_pool_t *pool;
 	svn_error_t *err;
