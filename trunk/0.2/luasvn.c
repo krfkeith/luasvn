@@ -1393,7 +1393,7 @@ status_func (void *baton, const char *path, svn_wc_status2_t *status) {
 static int
 l_status (lua_State *L) {
 
-	const char *path = luaL_checkstring (L, 1);
+	const char *path = (lua_gettop (L) < 1 || lua_isnil (L, 1)) ? "" : luaL_checkstring (L, 1);
 	
 	svn_opt_revision_t revision;
 
