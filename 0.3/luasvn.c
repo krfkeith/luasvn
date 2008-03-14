@@ -846,15 +846,15 @@ l_log (lua_State *L) {
 		limit = lua_tointeger (L, 4);
 	}
 
-	svn_boolean_t verbose = FALSE;
+	svn_boolean_t discover_changed_paths = FALSE;
 	svn_boolean_t stop_on_copy = FALSE;
 	
 	int itable = 5;
 	if (lua_gettop (L) >= itable && lua_istable (L, itable)) {
 		
-		lua_getfield (L, itable, "verbose");
+		lua_getfield (L, itable, "discover_changed_paths");
 		if (lua_isboolean (L, -1)) {
-			verbose = lua_toboolean (L, -1);
+			discover_changed_paths = lua_toboolean (L, -1);
 		}
 
 		lua_getfield (L, itable, "stop_on_copy");
@@ -880,7 +880,7 @@ l_log (lua_State *L) {
 	lua_newtable (L);
 
 	err = svn_client_log3 (array, &peg_revision, &end, &start, limit, 
-					verbose, stop_on_copy, log_receiver, L, ctx, pool);
+					discover_changed_paths, stop_on_copy, log_receiver, L, ctx, pool);
 	IF_ERROR_RETURN (err, pool, L);
 
 	svn_pool_destroy (pool);
@@ -1267,7 +1267,7 @@ l_propset (lua_State *L) {
 
 		err = svn_client_propset2 (propname_utf8, sstring, path, recursive, force, ctx, pool);
 	} else {
-		err = svn_client_propset2 (propname_utf8, NULL, path, TRUE, FALSE, ctx, pool);
+		err = svn_client_propset2 (propname_utf8, NULL, path, recursive, force, ctx, pool);
 	}
 	IF_ERROR_RETURN (err, pool, L);
 	
@@ -1785,7 +1785,6 @@ l_update (lua_State *L) {
 			ignore_externals = lua_toboolean (L, -1);
 		}
 	} 
-
 
 
 	apr_pool_t *pool;
