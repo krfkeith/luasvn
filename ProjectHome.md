@@ -1,0 +1,1 @@
+The intend of this project is to provide a basic set of Subversion (SVN) functions making possible to use some Subversion facilities from Lua.
